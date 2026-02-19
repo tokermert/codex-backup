@@ -42,4 +42,9 @@ export interface AnimationSettings {
   strength: number
 }
 
+export interface CanvasBackgroundSettings {
+  color: Color
+  opacity: number
+}
+
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

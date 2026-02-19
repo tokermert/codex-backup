@@ -165,8 +165,9 @@ export default function MeshCanvas() {
     rendererRef.current = renderer
 
     const tick = () => {
-      const { grid, subdivision } = store.state
+      const { grid, subdivision, canvasBackground } = store.state
       renderer.subdivision = subdivision
+      renderer.setBackground(canvasBackground)
       renderer.update(grid)
       drawOverlay()
     }
@@ -339,6 +340,24 @@ export default function MeshCanvas() {
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {/* Transparency checkerboard (UI-only, not part of canvas export) */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          backgroundColor: '#d9d9d9',
+          backgroundImage: `
+            linear-gradient(45deg, rgba(255,255,255,0.55) 25%, transparent 25%),
+            linear-gradient(-45deg, rgba(255,255,255,0.55) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.55) 75%),
+            linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.55) 75%)
+          `,
+          backgroundSize: '20px 20px',
+          backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0',
+        }}
+      />
       {/* WebGL gradient render */}
       <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%' }} />
       {/* 2D overlay: mesh lines + points */}

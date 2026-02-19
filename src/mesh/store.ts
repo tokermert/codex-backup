@@ -6,6 +6,7 @@ import type {
   HandleType,
   AnimationSettings,
   AnimationStyle,
+  CanvasBackgroundSettings,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -18,6 +19,7 @@ export interface EditorState {
   canvasSize: { width: number; height: number }
   subdivision: number
   animation: AnimationSettings
+  canvasBackground: CanvasBackgroundSettings
 }
 
 class EditorStore {
@@ -45,6 +47,15 @@ class EditorStore {
         style: 'static',
         speed: 1,
         strength: 0.5,
+      },
+      canvasBackground: {
+        color: {
+          r: 0x11 / 255,
+          g: 0x11 / 255,
+          b: 0x11 / 255,
+          a: 1,
+        },
+        opacity: 1,
       },
     }
     this.snapshot()
@@ -195,6 +206,16 @@ class EditorStore {
   setAnimationStrength(strength: number) {
     const b = this.animStrengthBounds(this.state.animation.style)
     this.state.animation.strength = Math.max(b.min, Math.min(b.max, strength))
+    this.notify()
+  }
+
+  setCanvasBackgroundColor(color: Color) {
+    this.state.canvasBackground.color = { ...color, a: 1 }
+    this.notify()
+  }
+
+  setCanvasBackgroundOpacity(opacity: number) {
+    this.state.canvasBackground.opacity = Math.max(0, Math.min(1, opacity))
     this.notify()
   }
 

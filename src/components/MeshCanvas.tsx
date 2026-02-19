@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { MeshRenderer } from '../mesh/renderer'
 import { store } from '../mesh/store'
+import type { AnimationSettings } from '../mesh/types'
 
 const POINT_RADIUS = 6
 const HANDLE_RADIUS = 4
@@ -21,7 +22,16 @@ export default function MeshCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef  = useRef<MeshRenderer | null>(null)
   const dragRef      = useRef<DragState | null>(null)
+  const reducedMotionRef = useRef(false)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
+
+  useEffect(() => {
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => { reducedMotionRef.current = mql.matches }
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
 
   // ── Draw overlay (mesh lines + points + handles) ──────────────────────────
   const drawOverlay = useCallback(() => {
@@ -158,14 +168,26 @@ export default function MeshCanvas() {
       const { grid, subdivision } = store.state
       renderer.subdivision = subdivision
       renderer.update(grid)
-      renderer.render()
       drawOverlay()
     }
 
     const unsub = store.subscribe(tick)
     tick()  // initial render
 
+    let rafId = 0
+    const frame = (now: number) => {
+      const anim = store.state.animation
+      const effectiveAnimation: AnimationSettings = reducedMotionRef.current
+        ? { ...anim, style: 'static', strength: 0 }
+        : anim
+      renderer.setAnimation(effectiveAnimation, now / 1000)
+      renderer.render()
+      rafId = requestAnimationFrame(frame)
+    }
+    rafId = requestAnimationFrame(frame)
+
     return () => {
+      cancelAnimationFrame(rafId)
       unsub()
       renderer.dispose()
     }

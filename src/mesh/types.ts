@@ -11,6 +11,7 @@ export interface Color {
 }
 
 export type HandleType = 'mirrorAngle' | 'mirrorLength' | 'free'
+export type AnimationStyle = 'static' | 'fluid' | 'smooth' | 'pulse' | 'wave'
 
 export interface Handles {
   left: Vec2
@@ -33,6 +34,12 @@ export interface MeshGrid {
   points: MeshPoint[][]  // [row][col]
   width: number         // canvas width in px
   height: number        // canvas height in px
+}
+
+export interface AnimationSettings {
+  style: AnimationStyle
+  speed: number
+  strength: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

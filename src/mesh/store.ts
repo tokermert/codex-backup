@@ -1,5 +1,12 @@
 import { createDefaultGrid } from './math'
-import type { MeshGrid, MeshPoint, Color, Vec2, HandleType } from './types'
+import type {
+  MeshGrid,
+  MeshPoint,
+  Color,
+  HandleType,
+  AnimationSettings,
+  AnimationStyle,
+} from './types'
 
 // Simple reactive store using callbacks
 type Listener = () => void
@@ -10,6 +17,7 @@ export interface EditorState {
   hoveredPoint: { row: number; col: number } | null
   canvasSize: { width: number; height: number }
   subdivision: number
+  animation: AnimationSettings
 }
 
 class EditorStore {
@@ -18,6 +26,14 @@ class EditorStore {
   private history: MeshGrid[] = []
   private historyIndex = -1
 
+  private animSpeedBounds(style: AnimationStyle) {
+    return style === 'smooth' ? { min: 2, max: 6 } : { min: 0.1, max: 4 }
+  }
+
+  private animStrengthBounds(style: AnimationStyle) {
+    return style === 'smooth' ? { min: 0.5, max: 2 } : { min: 0, max: 1 }
+  }
+
   constructor() {
     this.state = {
       grid: createDefaultGrid(3, 3, 800, 600),
@@ -25,6 +41,11 @@ class EditorStore {
       hoveredPoint: null,
       canvasSize: { width: 800, height: 600 },
       subdivision: 20,
+      animation: {
+        style: 'static',
+        speed: 1,
+        strength: 0.5,
+      },
     }
     this.snapshot()
   }
@@ -153,6 +174,27 @@ class EditorStore {
 
   setSubdivision(s: number) {
     this.state.subdivision = s
+    this.notify()
+  }
+
+  setAnimationStyle(style: AnimationStyle) {
+    this.state.animation.style = style
+    const speedBounds = this.animSpeedBounds(style)
+    const strengthBounds = this.animStrengthBounds(style)
+    this.state.animation.speed = Math.max(speedBounds.min, Math.min(speedBounds.max, this.state.animation.speed))
+    this.state.animation.strength = Math.max(strengthBounds.min, Math.min(strengthBounds.max, this.state.animation.strength))
+    this.notify()
+  }
+
+  setAnimationSpeed(speed: number) {
+    const b = this.animSpeedBounds(this.state.animation.style)
+    this.state.animation.speed = Math.max(b.min, Math.min(b.max, speed))
+    this.notify()
+  }
+
+  setAnimationStrength(strength: number) {
+    const b = this.animStrengthBounds(this.state.animation.style)
+    this.state.animation.strength = Math.max(b.min, Math.min(b.max, strength))
     this.notify()
   }
 

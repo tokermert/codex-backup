@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { store } from '../mesh/store'
-import type { HandleType } from '../mesh/types'
+import type { HandleType, AnimationStyle } from '../mesh/types'
 import ColorPicker from './ColorPicker'
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -147,6 +147,26 @@ const PRESETS: { name: string; colors: ReturnType<typeof c>[][] }[] = [
   },
 ]
 
+const ANIM_STYLES: { key: AnimationStyle; label: string }[] = [
+  { key: 'static', label: 'Static' },
+  { key: 'fluid', label: 'Fluid' },
+  { key: 'smooth', label: 'Smooth' },
+  { key: 'pulse', label: 'Pulse' },
+  { key: 'wave', label: 'Wave' },
+]
+
+const ANIM_PRESETS = [
+  { label: 'Calm', speed: 0.55, strength: 0.28 },
+  { label: 'Hero', speed: 1.0, strength: 0.52 },
+  { label: 'Energetic', speed: 1.8, strength: 0.78 },
+]
+
+const SMOOTH_PRESETS = [
+  { label: 'Calm', speed: 2.2, strength: 0.6 },
+  { label: 'Hero', speed: 3.4, strength: 1.1 },
+  { label: 'Energetic', speed: 5.0, strength: 1.7 },
+]
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RightPanel() {
@@ -160,6 +180,13 @@ export default function RightPanel() {
   const sel   = store.state.selectedPoint
   const point = store.getSelectedPoint()
   const grid  = store.state.grid
+  const animation = store.state.animation
+  const isSmooth = animation.style === 'smooth'
+  const presets = isSmooth ? SMOOTH_PRESETS : ANIM_PRESETS
+  const speedMin = isSmooth ? 2 : 0.1
+  const speedMax = isSmooth ? 6 : 4
+  const strengthMin = isSmooth ? 0.5 : 0
+  const strengthMax = isSmooth ? 2 : 1
 
   return (
     <div style={panel}>
@@ -221,6 +248,75 @@ export default function RightPanel() {
 
       {/* ── Spacer ───────────────────────────────────────────────────────── */}
       <div style={{ flex: 1 }} />
+
+      {/* ── Animation ────────────────────────────────────────────────────── */}
+      <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <span style={sectionLabel}>Animation</span>
+        <div style={{ ...row, marginBottom: 10 }}>
+          {ANIM_STYLES.map(item => (
+            <button
+              key={item.key}
+              style={modeBtn(animation.style === item.key)}
+              onClick={() => store.setAnimationStyle(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ ...row, marginBottom: 12 }}>
+          {presets.map(preset => (
+            <button
+              key={preset.label}
+              style={{
+                ...modeBtn(
+                  Math.abs(animation.speed - preset.speed) < 0.02 &&
+                  Math.abs(animation.strength - preset.strength) < 0.02,
+                ),
+                padding: '4px 0',
+              }}
+              onClick={() => {
+                store.setAnimationSpeed(preset.speed)
+                store.setAnimationStrength(preset.strength)
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+            <span>Speed</span>
+            <span>{animation.speed.toFixed(2)}x</span>
+          </div>
+          <input
+            type="range"
+            min={speedMin}
+            max={speedMax}
+            step={0.05}
+            value={animation.speed}
+            onChange={e => store.setAnimationSpeed(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+          />
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+            <span>Strength</span>
+            <span>{animation.strength.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min={strengthMin}
+            max={strengthMax}
+            step={0.01}
+            value={animation.strength}
+            onChange={e => store.setAnimationStrength(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+          />
+        </div>
+      </div>
 
       {/* ── Presets ──────────────────────────────────────────────────────── */}
       <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import LeftPanel from './components/LeftPanel'
 import MeshCanvas from './components/MeshCanvas'
 import RightPanel from './components/RightPanel'
 import Toolbar from './components/Toolbar'
@@ -6,6 +7,7 @@ import { store } from './mesh/store'
 
 const VIEWPORT_PADDING = 28
 const INTERACTION_MARGIN = 22
+const DEFAULT_ZOOM = 0.7
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 3
 const ZOOM_STEP = 0.1
@@ -21,7 +23,7 @@ export default function App() {
     startPanY: number
   } | null>(null)
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [spacePressed, setSpacePressed] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
@@ -100,7 +102,7 @@ export default function App() {
   }, [])
 
   const resetView = useCallback(() => {
-    setZoom(1)
+    setZoom(DEFAULT_ZOOM)
     setPan({ x: 0, y: 0 })
   }, [])
 
@@ -181,13 +183,13 @@ export default function App() {
   }, [])
 
   const onViewportWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (!(e.ctrlKey || e.metaKey)) return
     e.preventDefault()
     const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP
     updateZoom(current => current + delta)
   }, [updateZoom])
 
   const viewportCursor = isPanning ? 'grabbing' : (spacePressed ? 'grab' : 'default')
+  const displayZoomPercent = Math.round((zoom / DEFAULT_ZOOM) * 100)
 
   return (
     <div style={{
@@ -201,6 +203,7 @@ export default function App() {
       <Toolbar />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        <LeftPanel />
 
         {/* ── Canvas viewport ─────────────────────────────────────────────── */}
         <div style={{
@@ -318,7 +321,7 @@ export default function App() {
               fontVariantNumeric: 'tabular-nums',
               color: 'rgba(255,255,255,0.7)',
             }}>
-              {Math.round(zoom * 100)}%
+              {displayZoomPercent}%
             </div>
           </div>
         </div>

@@ -12,6 +12,7 @@ export interface Color {
 
 export type HandleType = 'mirrorAngle' | 'mirrorLength' | 'free'
 export type AnimationStyle = 'static' | 'fluid' | 'smooth' | 'pulse' | 'wave'
+export type EffectType = 'none' | 'wavy'
 
 export interface Handles {
   left: Vec2
@@ -45,6 +46,14 @@ export interface AnimationSettings {
 export interface CanvasBackgroundSettings {
   color: Color
   opacity: number
+}
+
+export interface EffectSettings {
+  type: EffectType
+  color: Color
+  lineColor: Color
+  opacity: number
+  scale: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

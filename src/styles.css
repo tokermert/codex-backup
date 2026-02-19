@@ -1,0 +1,39 @@
+:root {
+  --panel-scroll-track: rgba(255, 255, 255, 0.04);
+  --panel-scroll-thumb: rgba(31, 27, 92, 0.9);
+  --panel-scroll-thumb-hover: rgba(31, 27, 92, 1);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+[data-scrollbar='panel'] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-scroll-thumb) var(--panel-scroll-track);
+  scrollbar-gutter: stable;
+}
+
+[data-scrollbar='panel']::-webkit-scrollbar {
+  width: 10px;
+}
+
+[data-scrollbar='panel']::-webkit-scrollbar-track {
+  background: var(--panel-scroll-track);
+  border-radius: 999px;
+}
+
+[data-scrollbar='panel']::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--panel-scroll-thumb), rgba(31, 27, 92, 0.75));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-scrollbar='panel']::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--panel-scroll-thumb-hover), rgba(31, 27, 92, 0.85));
+}

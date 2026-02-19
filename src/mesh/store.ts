@@ -7,6 +7,8 @@ import type {
   AnimationSettings,
   AnimationStyle,
   CanvasBackgroundSettings,
+  EffectSettings,
+  EffectType,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -21,6 +23,7 @@ export interface EditorState {
   subdivision: number
   animation: AnimationSettings
   canvasBackground: CanvasBackgroundSettings
+  effect: EffectSettings
 }
 
 class EditorStore {
@@ -58,6 +61,23 @@ class EditorStore {
           a: 1,
         },
         opacity: 1,
+      },
+      effect: {
+        type: 'none',
+        color: {
+          r: 0xe5 / 255,
+          g: 0xe5 / 255,
+          b: 0xf7 / 255,
+          a: 1,
+        },
+        lineColor: {
+          r: 0,
+          g: 0,
+          b: 0,
+          a: 1,
+        },
+        opacity: 0.3,
+        scale: 30,
       },
     }
     this.snapshot()
@@ -233,6 +253,31 @@ class EditorStore {
 
   setCanvasBackgroundOpacity(opacity: number) {
     this.state.canvasBackground.opacity = Math.max(0, Math.min(1, opacity))
+    this.notify()
+  }
+
+  setEffectType(type: EffectType) {
+    this.state.effect.type = type
+    this.notify()
+  }
+
+  setEffectColor(color: Color) {
+    this.state.effect.color = { ...color, a: 1 }
+    this.notify()
+  }
+
+  setEffectLineColor(color: Color) {
+    this.state.effect.lineColor = { ...color, a: 1 }
+    this.notify()
+  }
+
+  setEffectOpacity(opacity: number) {
+    this.state.effect.opacity = Math.max(0, Math.min(1, opacity))
+    this.notify()
+  }
+
+  setEffectScale(scale: number) {
+    this.state.effect.scale = Math.round(Math.max(4, Math.min(128, scale)))
     this.notify()
   }
 

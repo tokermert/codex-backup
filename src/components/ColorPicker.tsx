@@ -200,7 +200,9 @@ export default function ColorPicker({ color, onChange }: Props) {
           }}
           spellCheck={false}
         />
-        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>100</span>
+        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>
+          {Math.round(color.a * 100)}
+        </span>
       </div>
     </div>
   )

@@ -17,6 +17,7 @@ export interface EditorState {
   selectedPoint: { row: number; col: number } | null
   hoveredPoint: { row: number; col: number } | null
   canvasSize: { width: number; height: number }
+  artboardSize: { width: number; height: number }
   subdivision: number
   animation: AnimationSettings
   canvasBackground: CanvasBackgroundSettings
@@ -42,6 +43,7 @@ class EditorStore {
       selectedPoint: null,
       hoveredPoint: null,
       canvasSize: { width: 800, height: 600 },
+      artboardSize: { width: 1600, height: 1000 },
       subdivision: 20,
       animation: {
         style: 'static',
@@ -105,6 +107,13 @@ class EditorStore {
     this.notify()
   }
 
+  setArtboardSize(width: number, height: number) {
+    const w = Math.round(Math.max(128, Math.min(8192, width)))
+    const h = Math.round(Math.max(128, Math.min(8192, height)))
+    this.state.artboardSize = { width: w, height: h }
+    this.notify()
+  }
+
   selectPoint(row: number | null, col: number | null) {
     if (row === null || col === null) {
       this.state.selectedPoint = null
@@ -126,9 +135,10 @@ class EditorStore {
 
   movePoint(row: number, col: number, dx: number, dy: number) {
     const p = this.state.grid.points[row][col]
+    const clamp = (v: number) => Math.max(-1.5, Math.min(2.5, v))
     const newPos = {
-      x: Math.max(0, Math.min(1, p.position.x + dx / this.state.grid.width)),
-      y: Math.max(0, Math.min(1, p.position.y + dy / this.state.grid.height)),
+      x: clamp(p.position.x + dx / this.state.grid.width),
+      y: clamp(p.position.y + dy / this.state.grid.height),
     }
     this.state.grid.points[row][col] = { ...p, position: newPos }
     this.notify()
@@ -174,6 +184,13 @@ class EditorStore {
     this.state.grid.points[row][col] = { ...p, color }
     this.notify()
     this.snapshot()
+  }
+
+  setPointOpacity(row: number, col: number, opacity: number) {
+    const p = this.state.grid.points[row][col]
+    const a = Math.max(0, Math.min(1, opacity))
+    this.state.grid.points[row][col] = { ...p, color: { ...p.color, a } }
+    this.notify()
   }
 
   setHandleType(row: number, col: number, type: HandleType) {

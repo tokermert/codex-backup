@@ -173,6 +173,12 @@ const SMOOTH_PRESETS = [
   { label: 'Energetic', speed: 5.0, strength: 1.7 },
 ]
 
+const ARTBOARD_PRESETS = [
+  { label: 'Landscape', width: 1600, height: 1000 },
+  { label: 'Portrait', width: 1000, height: 1600 },
+  { label: 'Square', width: 1200, height: 1200 },
+]
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RightPanel() {
@@ -186,6 +192,7 @@ export default function RightPanel() {
   const sel   = store.state.selectedPoint
   const point = store.getSelectedPoint()
   const grid  = store.state.grid
+  const artboard = store.state.artboardSize
   const animation = store.state.animation
   const canvasBackground = store.state.canvasBackground
   const isStatic = animation.style === 'static'
@@ -195,6 +202,13 @@ export default function RightPanel() {
   const speedMax = isSmooth ? 6 : 4
   const strengthMin = isSmooth ? 0.5 : 0
   const strengthMax = isSmooth ? 2 : 1
+  const [customW, setCustomW] = useState(String(artboard.width))
+  const [customH, setCustomH] = useState(String(artboard.height))
+
+  useEffect(() => {
+    setCustomW(String(artboard.width))
+    setCustomH(String(artboard.height))
+  }, [artboard.width, artboard.height])
 
   return (
     <div style={panel}>
@@ -226,6 +240,23 @@ export default function RightPanel() {
               color={point.color}
               onChange={c => store.setPointColor(sel.row, sel.col, c)}
             />
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+                <span>Point Opacity</span>
+                <span>{Math.round(point.color.a * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={point.color.a}
+                onChange={e => store.setPointOpacity(sel.row, sel.col, Number(e.target.value))}
+                onPointerUp={() => store.commitSnapshot()}
+                onKeyUp={() => store.commitSnapshot()}
+                style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+              />
+            </div>
           </div>
         </>
       ) : (
@@ -369,6 +400,60 @@ export default function RightPanel() {
             onChange={e => store.setCanvasBackgroundOpacity(Number(e.target.value))}
             style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
           />
+        </div>
+      </div>
+
+      {/* ── Canvas size ──────────────────────────────────────────────────── */}
+      <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <span style={sectionLabel}>Canvas Size</span>
+
+        <div style={{ ...row, marginBottom: 8 }}>
+          {ARTBOARD_PRESETS.map(preset => (
+            <button
+              key={preset.label}
+              style={modeBtn(artboard.width === preset.width && artboard.height === preset.height)}
+              onClick={() => store.setArtboardSize(preset.width, preset.height)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ ...row, marginBottom: 8 }}>
+          <input
+            style={inputStyle}
+            type="number"
+            min={128}
+            max={8192}
+            value={customW}
+            onChange={e => setCustomW(e.target.value)}
+            placeholder="W"
+          />
+          <input
+            style={inputStyle}
+            type="number"
+            min={128}
+            max={8192}
+            value={customH}
+            onChange={e => setCustomH(e.target.value)}
+            placeholder="H"
+          />
+          <button
+            style={{ ...actionBtn, flex: '0 0 auto', width: 52 }}
+            onClick={() => {
+              const w = Number(customW)
+              const h = Number(customH)
+              if (Number.isFinite(w) && Number.isFinite(h)) {
+                store.setArtboardSize(w, h)
+              }
+            }}
+          >
+            Apply
+          </button>
+        </div>
+
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+          Active: {artboard.width} × {artboard.height}
         </div>
       </div>
 

@@ -6,6 +6,8 @@ import type { AnimationSettings } from '../mesh/types'
 const POINT_RADIUS = 6
 const HANDLE_RADIUS = 4
 const HIT_RADIUS = 14  // px — hit target (in client px)
+const OVERLAY_PAD = 200 // allow drawing/interacting outside artboard bounds
+const VIEWPORT_RADIUS = 10
 
 interface DragState {
   type: 'point' | 'handle'
@@ -44,16 +46,16 @@ export default function MeshCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.save()
     ctx.scale(dpr, dpr)
+    ctx.translate(OVERLAY_PAD, OVERLAY_PAD)
 
     const { grid, selectedPoint, hoveredPoint } = store.state
-    const W = canvas.width  / dpr   // logical width
-    const H = canvas.height / dpr   // logical height
+    const W = canvas.width  / dpr - OVERLAY_PAD * 2
+    const H = canvas.height / dpr - OVERLAY_PAD * 2
 
     // ── Mesh bezier lines ─────────────────────────────────────────────────
     ctx.strokeStyle = 'rgba(255,255,255,0.22)'
     ctx.lineWidth   = 1
 
-    // row curves (horizontal, u-direction)
     for (let r = 0; r < grid.rows; r++) {
       for (let c = 0; c < grid.cols - 1; c++) {
         const p0 = grid.points[r][c]
@@ -72,7 +74,6 @@ export default function MeshCanvas() {
       }
     }
 
-    // col curves (vertical, v-direction)
     for (let c = 0; c < grid.cols; c++) {
       for (let r = 0; r < grid.rows - 1; r++) {
         const p0 = grid.points[r][c]
@@ -98,10 +99,10 @@ export default function MeshCanvas() {
       const py = p.position.y * H
 
       const hs = [
-        { key: 'left',  dx: p.handles.left.x,  dy: p.handles.left.y  },
-        { key: 'right', dx: p.handles.right.x, dy: p.handles.right.y },
-        { key: 'up',    dx: p.handles.up.x,    dy: p.handles.up.y    },
-        { key: 'down',  dx: p.handles.down.x,  dy: p.handles.down.y  },
+        { dx: p.handles.left.x,  dy: p.handles.left.y  },
+        { dx: p.handles.right.x, dy: p.handles.right.y },
+        { dx: p.handles.up.x,    dy: p.handles.up.y    },
+        { dx: p.handles.down.x,  dy: p.handles.down.y  },
       ] as const
 
       hs.forEach(({ dx, dy }) => {
@@ -133,10 +134,9 @@ export default function MeshCanvas() {
         const p  = grid.points[r][c]
         const px = p.position.x * W
         const py = p.position.y * H
-        const isSel  = selectedPoint?.row === r && selectedPoint?.col === c
-        const isHov  = hoveredPoint?.row === r && hoveredPoint?.col === c
+        const isSel = selectedPoint?.row === r && selectedPoint?.col === c
+        const isHov = hoveredPoint?.row === r && hoveredPoint?.col === c
 
-        // outer white ring
         ctx.beginPath()
         ctx.arc(px, py, POINT_RADIUS + (isSel ? 3 : 2), 0, Math.PI * 2)
         ctx.fillStyle = isSel  ? 'rgba(255,255,255,1)'
@@ -144,7 +144,6 @@ export default function MeshCanvas() {
                       :          'rgba(255,255,255,0.6)'
         ctx.fill()
 
-        // colour fill
         const { r: cr, g: cg, b: cb } = p.color
         ctx.beginPath()
         ctx.arc(px, py, POINT_RADIUS, 0, Math.PI * 2)
@@ -154,7 +153,7 @@ export default function MeshCanvas() {
     }
 
     ctx.restore()
-  }, [])  // stable — reads store directly
+  }, [])
 
   // ── Three.js renderer setup ───────────────────────────────────────────────
   useEffect(() => {
@@ -173,7 +172,7 @@ export default function MeshCanvas() {
     }
 
     const unsub = store.subscribe(tick)
-    tick()  // initial render
+    tick()
 
     let rafId = 0
     const frame = (now: number) => {
@@ -207,14 +206,15 @@ export default function MeshCanvas() {
       rendererRef.current?.setSize(w, h)
       store.setCanvasSize(w, h)
 
-      // Keep overlay canvas in sync (DPR-aware)
       const overlay = overlayRef.current
       if (overlay) {
         const dpr = window.devicePixelRatio || 1
-        overlay.width  = w * dpr
-        overlay.height = h * dpr
-        overlay.style.width  = w + 'px'
-        overlay.style.height = h + 'px'
+        const ow = w + OVERLAY_PAD * 2
+        const oh = h + OVERLAY_PAD * 2
+        overlay.width  = ow * dpr
+        overlay.height = oh * dpr
+        overlay.style.width  = ow + 'px'
+        overlay.style.height = oh + 'px'
       }
 
       drawOverlay()
@@ -226,14 +226,9 @@ export default function MeshCanvas() {
 
   // ── Hit testing ───────────────────────────────────────────────────────────
   const getHitPoint = useCallback((cx: number, cy: number) => {
-    const canvas = overlayRef.current
-    if (!canvas) return null
-
-    const W = canvas.clientWidth
-    const H = canvas.clientHeight
+    const { width: W, height: H } = store.state.canvasSize
     const { grid, selectedPoint } = store.state
 
-    // Handles first (selected point only)
     if (selectedPoint) {
       const p = grid.points[selectedPoint.row][selectedPoint.col]
       for (const h of ['left', 'right', 'up', 'down'] as const) {
@@ -245,7 +240,6 @@ export default function MeshCanvas() {
       }
     }
 
-    // Mesh points
     let best: { type: 'point'; row: number; col: number } | null = null
     let bestDist = HIT_RADIUS
 
@@ -253,7 +247,10 @@ export default function MeshCanvas() {
       for (let c = 0; c < grid.cols; c++) {
         const p = grid.points[r][c]
         const d = Math.hypot(cx - p.position.x * W, cy - p.position.y * H)
-        if (d < bestDist) { bestDist = d; best = { type: 'point', row: r, col: c } }
+        if (d < bestDist) {
+          bestDist = d
+          best = { type: 'point', row: r, col: c }
+        }
       }
     }
 
@@ -262,7 +259,7 @@ export default function MeshCanvas() {
 
   const clientXY = useCallback((e: React.PointerEvent) => {
     const rect = overlayRef.current!.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    return { x: e.clientX - rect.left - OVERLAY_PAD, y: e.clientY - rect.top - OVERLAY_PAD }
   }, [])
 
   // ── Pointer events ────────────────────────────────────────────────────────
@@ -289,7 +286,6 @@ export default function MeshCanvas() {
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const { x, y } = clientXY(e)
 
-    // ── Hovering (no drag active) ────────────────────────────────────────
     if (!dragRef.current) {
       const hit = getHitPoint(x, y)
       if (hit?.type === 'point') {
@@ -305,8 +301,6 @@ export default function MeshCanvas() {
       return
     }
 
-    // ── Dragging ─────────────────────────────────────────────────────────
-    // Use movementX/Y when available (more accurate, avoids rect.getBoundingClientRect overhead)
     const drag = dragRef.current
     const dx = x - drag.lastX
     const dy = y - drag.lastY
@@ -332,7 +326,10 @@ export default function MeshCanvas() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return
-      if (e.key === 'z') { e.preventDefault(); e.shiftKey ? store.redo() : store.undo() }
+      if (e.key === 'z') {
+        e.preventDefault()
+        e.shiftKey ? store.redo() : store.undo()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -347,6 +344,7 @@ export default function MeshCanvas() {
           position: 'absolute',
           inset: 0,
           pointerEvents: 'none',
+          borderRadius: VIEWPORT_RADIUS,
           backgroundColor: '#d9d9d9',
           backgroundImage: `
             linear-gradient(45deg, rgba(255,255,255,0.55) 25%, transparent 25%),
@@ -358,17 +356,40 @@ export default function MeshCanvas() {
           backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0',
         }}
       />
+
       {/* WebGL gradient render */}
-      <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%' }} />
+      <canvas
+        ref={glCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
       {/* 2D overlay: mesh lines + points */}
       <canvas
         ref={overlayRef}
-        style={{ position: 'absolute', inset: 0, cursor, touchAction: 'none' }}
+        style={{
+          position: 'absolute',
+          left: -OVERLAY_PAD,
+          top: -OVERLAY_PAD,
+          cursor,
+          touchAction: 'none',
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={() => { if (!dragRef.current) { store.hoverPoint(null, null); setCursor('crosshair') } }}
+        onPointerLeave={() => {
+          if (!dragRef.current) {
+            store.hoverPoint(null, null)
+            setCursor('crosshair')
+          }
+        }}
       />
     </div>
   )

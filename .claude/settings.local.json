@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:colorflow.ls.graphics)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(npm create:*)",
+      "Bash(npm init -y)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(lsof:*)",
+      "Bash(echo:*)",
+      "Bash(rsync:*)"
+    ]
+  }
+}

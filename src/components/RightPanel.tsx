@@ -80,6 +80,15 @@ const SMOOTH_PRESETS = [
 const EFFECT_TYPES: { key: EffectType; label: string }[] = [
   { key: 'none', label: 'None' },
   { key: 'wavy', label: 'Wavy' },
+  { key: 'zigzag', label: 'Zigzag' },
+  { key: 'zigzag3d', label: 'Zigzag 3D' },
+  { key: 'circle', label: 'Circle' },
+  { key: 'isometric', label: 'Isometric' },
+  { key: 'polka', label: 'Polka' },
+  { key: 'lines', label: 'Lines' },
+  { key: 'boxes', label: 'Boxes' },
+  { key: 'triangle', label: 'Triangle' },
+  { key: 'rhombus', label: 'Rhombus' },
 ]
 
 const c = (hex: string): Color => {
@@ -91,6 +100,28 @@ const toHex = (color: Color) => {
   const to255 = (n: number) => Math.max(0, Math.min(255, Math.round(n * 255)))
   const hex = (n: number) => to255(n).toString(16).padStart(2, '0')
   return `#${hex(color.r)}${hex(color.g)}${hex(color.b)}`
+}
+
+const EFFECT_CONTROL_CONFIG: Record<EffectType, {
+  showColor: boolean
+  showLine: boolean
+  showOpacity: boolean
+  showScale: boolean
+  showRotate: boolean
+  scaleMin: number
+  scaleMax: number
+}> = {
+  none:     { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  wavy:     { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 96 },
+  zigzag:   { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 80 },
+  zigzag3d: { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 80 },
+  circle:   { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 96 },
+  isometric:{ showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 8,  scaleMax: 96 },
+  polka:    { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: true,  scaleMin: 6,  scaleMax: 64 },
+  lines:    { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: true,  scaleMin: 4,  scaleMax: 64 },
+  boxes:    { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 96 },
+  triangle: { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  rhombus:  { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
 }
 
 export default function RightPanel() {
@@ -110,6 +141,7 @@ export default function RightPanel() {
   const strengthMin = isSmooth ? 0.5 : 0
   const strengthMax = isSmooth ? 2 : 1
   const effect = store.state.effect
+  const effectCfg = EFFECT_CONTROL_CONFIG[effect.type]
 
   return (
     <div style={panel} data-scrollbar="panel">
@@ -200,7 +232,7 @@ export default function RightPanel() {
       <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <span style={sectionLabel}>Effects</span>
 
-        <div style={{ ...row, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 10 }}>
           {EFFECT_TYPES.map(item => (
             <button
               key={item.key}
@@ -212,77 +244,103 @@ export default function RightPanel() {
           ))}
         </div>
 
-        {effect.type === 'wavy' && (
+        {effect.type !== 'none' && (
           <>
-            <div style={{ ...row, marginBottom: 10 }}>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Color</span>
-              <input
-                type="color"
-                value={toHex(effect.color)}
-                onChange={e => store.setEffectColor(c(e.target.value))}
-                style={{
-                  width: 44,
-                  height: 28,
-                  padding: 0,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: 5,
-                  background: 'transparent',
-                  cursor: 'pointer',
-                }}
-              />
-              <input style={inputStyle} readOnly value={toHex(effect.color).toUpperCase()} />
-            </div>
-
-            <div style={{ ...row, marginBottom: 10 }}>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Line</span>
-              <input
-                type="color"
-                value={toHex(effect.lineColor)}
-                onChange={e => store.setEffectLineColor(c(e.target.value))}
-                style={{
-                  width: 44,
-                  height: 28,
-                  padding: 0,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: 5,
-                  background: 'transparent',
-                  cursor: 'pointer',
-                }}
-              />
-              <input style={inputStyle} readOnly value={toHex(effect.lineColor).toUpperCase()} />
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
-                <span>Opacity</span>
-                <span>{effect.opacity.toFixed(2)}</span>
+            {effectCfg.showColor && (
+              <div style={{ ...row, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Color</span>
+                <input
+                  type="color"
+                  value={toHex(effect.color)}
+                  onChange={e => store.setEffectColor(c(e.target.value))}
+                  style={{
+                    width: 44,
+                    height: 28,
+                    padding: 0,
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 5,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                />
+                <input style={inputStyle} readOnly value={toHex(effect.color).toUpperCase()} />
               </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={effect.opacity}
-                onChange={e => store.setEffectOpacity(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
-              />
-            </div>
+            )}
 
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
-                <span>Scale</span>
-                <span>{effect.scale}</span>
+            {effectCfg.showLine && (
+              <div style={{ ...row, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Line</span>
+                <input
+                  type="color"
+                  value={toHex(effect.lineColor)}
+                  onChange={e => store.setEffectLineColor(c(e.target.value))}
+                  style={{
+                    width: 44,
+                    height: 28,
+                    padding: 0,
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 5,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                />
+                <input style={inputStyle} readOnly value={toHex(effect.lineColor).toUpperCase()} />
               </div>
-              <input
-                type="range"
-                min={4}
-                max={64}
-                step={1}
-                value={effect.scale}
-                onChange={e => store.setEffectScale(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
-              />
-            </div>
+            )}
+
+            {effectCfg.showOpacity && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+                  <span>Opacity</span>
+                  <span>{effect.opacity.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={effect.opacity}
+                  onChange={e => store.setEffectOpacity(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                />
+              </div>
+            )}
+
+            {effectCfg.showScale && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+                  <span>Scale</span>
+                  <span>{effect.scale}</span>
+                </div>
+                <input
+                  type="range"
+                  min={effectCfg.scaleMin}
+                  max={effectCfg.scaleMax}
+                  step={1}
+                  value={effect.scale}
+                  onChange={e => store.setEffectScale(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                />
+              </div>
+            )}
+
+            {effectCfg.showRotate && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>
+                  <span>Rotate</span>
+                  <span>{Math.round(effect.rotate)}°</span>
+                </div>
+                <input
+                  type="range"
+                  min={-180}
+                  max={180}
+                  step={1}
+                  value={effect.rotate}
+                  onChange={e => store.setEffectRotate(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                />
+              </div>
+            )}
           </>
         )}
       </div>

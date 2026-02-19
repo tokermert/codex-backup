@@ -78,6 +78,7 @@ class EditorStore {
         },
         opacity: 0.3,
         scale: 30,
+        rotate: 0,
       },
     }
     this.snapshot()
@@ -257,7 +258,32 @@ class EditorStore {
   }
 
   setEffectType(type: EffectType) {
+    const prevType = this.state.effect.type
+    if (prevType === type) {
+      this.notify()
+      return
+    }
     this.state.effect.type = type
+    const presets: Record<Exclude<EffectType, 'none'>, { scale: number; rotate: number }> = {
+      wavy: { scale: 10, rotate: 0 },
+      zigzag: { scale: 20, rotate: 0 },
+      zigzag3d: { scale: 20, rotate: 0 },
+      circle: { scale: 10, rotate: 0 },
+      isometric: { scale: 20, rotate: 0 },
+      polka: { scale: 10, rotate: 0 },
+      lines: { scale: 10, rotate: 0 },
+      boxes: { scale: 20, rotate: 0 },
+      triangle: { scale: 10, rotate: 0 },
+      rhombus: { scale: 10, rotate: 0 },
+    }
+    if (type !== 'none') {
+      const p = presets[type]
+      this.state.effect.color = { r: 0xe5 / 255, g: 0xe5 / 255, b: 0xf7 / 255, a: 1 }
+      this.state.effect.lineColor = { r: 0x44 / 255, g: 0x4c / 255, b: 0xf7 / 255, a: 1 }
+      this.state.effect.opacity = 0.8
+      this.state.effect.scale = p.scale
+      this.state.effect.rotate = p.rotate
+    }
     this.notify()
   }
 
@@ -278,6 +304,11 @@ class EditorStore {
 
   setEffectScale(scale: number) {
     this.state.effect.scale = Math.round(Math.max(4, Math.min(128, scale)))
+    this.notify()
+  }
+
+  setEffectRotate(rotate: number) {
+    this.state.effect.rotate = Math.max(-180, Math.min(180, rotate))
     this.notify()
   }
 

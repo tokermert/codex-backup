@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { MeshRenderer } from '../mesh/renderer'
 import { store } from '../mesh/store'
 import type { AnimationSettings } from '../mesh/types'
@@ -26,44 +26,6 @@ export default function MeshCanvas() {
   const dragRef      = useRef<DragState | null>(null)
   const reducedMotionRef = useRef(false)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
-  const effect = store.state.effect
-
-  const toRgba = (r: number, g: number, b: number, a: number) =>
-    `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`
-
-  const effectLayerStyle = useMemo<React.CSSProperties>(() => {
-    if (effect.type === 'none') {
-      return { display: 'none' }
-    }
-
-    const scale = Math.max(4, effect.scale)
-    const baseColor = toRgba(effect.color.r, effect.color.g, effect.color.b, 1)
-    const lineSoft = toRgba(effect.lineColor.r, effect.lineColor.g, effect.lineColor.b, 0.33)
-    const lineStrong = toRgba(effect.lineColor.r, effect.lineColor.g, effect.lineColor.b, 1)
-
-    return {
-      position: 'absolute',
-      inset: 0,
-      pointerEvents: 'none',
-      borderRadius: VIEWPORT_RADIUS,
-      opacity: effect.opacity,
-      backgroundColor: baseColor,
-      backgroundImage: `
-        repeating-radial-gradient(circle at 0 0, transparent 0, ${baseColor} ${scale}px),
-        repeating-linear-gradient(${lineSoft}, ${lineStrong})
-      `,
-    }
-  }, [
-    effect.color.b,
-    effect.color.g,
-    effect.color.r,
-    effect.lineColor.b,
-    effect.lineColor.g,
-    effect.lineColor.r,
-    effect.opacity,
-    effect.scale,
-    effect.type,
-  ])
 
   useEffect(() => {
     const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -202,9 +164,10 @@ export default function MeshCanvas() {
     rendererRef.current = renderer
 
     const tick = () => {
-      const { grid, subdivision, canvasBackground } = store.state
+      const { grid, subdivision, canvasBackground, effect } = store.state
       renderer.subdivision = subdivision
       renderer.setBackground(canvasBackground)
+      renderer.setEffect(effect)
       renderer.update(grid)
       drawOverlay()
     }
@@ -407,9 +370,6 @@ export default function MeshCanvas() {
           borderRadius: VIEWPORT_RADIUS,
         }}
       />
-
-      {/* CSS Effect layer */}
-      <div aria-hidden style={effectLayerStyle} />
 
       {/* 2D overlay: mesh lines + points */}
       <canvas

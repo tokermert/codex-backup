@@ -12,7 +12,18 @@ export interface Color {
 
 export type HandleType = 'mirrorAngle' | 'mirrorLength' | 'free'
 export type AnimationStyle = 'static' | 'fluid' | 'smooth' | 'pulse' | 'wave'
-export type EffectType = 'none' | 'wavy'
+export type EffectType =
+  | 'none'
+  | 'wavy'
+  | 'zigzag'
+  | 'zigzag3d'
+  | 'circle'
+  | 'isometric'
+  | 'polka'
+  | 'lines'
+  | 'boxes'
+  | 'triangle'
+  | 'rhombus'
 
 export interface Handles {
   left: Vec2
@@ -54,6 +65,7 @@ export interface EffectSettings {
   lineColor: Color
   opacity: number
   scale: number
+  rotate: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

@@ -14,10 +14,45 @@ const vertexShader = /* glsl */`
   attribute vec4 color;
   varying vec4 vColor;
   varying vec2 vPos;
+  uniform float uTime;
+  uniform float uAnimStyle;
+  uniform float uAnimSpeed;
+  uniform float uAnimStrength;
+
   void main() {
+    vec2 pos = position.xy;
+
+    if (uAnimStyle >= 4.5 && uAnimStyle < 5.5) {
+      // Water Drop: continuous ring train from center (infinite loop).
+      float t = uTime * uAnimSpeed;
+      float period = 1.9;
+      float maxRadius = 1.6;
+      float d = length(pos);
+      float width = 0.068;
+      float ring = 0.0;
+      for (int i = 0; i < 9; i++) {
+        float phase = float(i) / 9.0;
+        float c = fract(t / period + phase);
+        float r = c * maxRadius;
+        ring += exp(-pow((d - r) / max(width, 0.0001), 2.0));
+      }
+      vec2 dir = d > 0.0001 ? (pos / d) : vec2(0.0);
+      pos += dir * ring * (0.0075 * uAnimStrength);
+    }
+
+    if (uAnimStyle >= 5.5 && uAnimStyle < 6.5) {
+      // Rotate: rotate whole color field instead of adding pulsing color layer.
+      float a = uTime * uAnimSpeed * 0.9;
+      float c = cos(a);
+      float s = sin(a);
+      // Scale up to avoid corner gaps while rotating.
+      vec2 p = pos * 1.42;
+      pos = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+    }
+
     vColor = color;
-    vPos = position.xy;
-    gl_Position = vec4(position.xy, 0.0, 1.0);
+    vPos = pos;
+    gl_Position = vec4(pos, 0.0, 1.0);
   }
 `
 
@@ -178,6 +213,34 @@ const fragmentShader = /* glsl */`
       float w = sin(vPos.x * 9.0 + t * 2.1) * cos(vPos.y * 6.0 - t * 1.7);
       vec3 waveShift = vec3(w, w * 0.7, -w * 0.85) * (0.09 * uAnimStrength);
       col = clamp(col + waveShift, 0.0, 1.0);
+    } else if (uAnimStyle >= 4.5 && uAnimStyle < 5.5) {
+      // Water Drop: center splash + continuously emitted outward circular ripples.
+      float t = uTime * uAnimSpeed;
+      float period = 1.9;
+      float maxRadius = 1.6;
+      float d = length(vPos);
+      float w = 0.068;
+      float ripple = 0.0;
+      float splashTrain = 0.0;
+      for (int i = 0; i < 9; i++) {
+        float phase = float(i) / 9.0;
+        float c = fract(t / period + phase);
+        float r = c * maxRadius;
+        float g = exp(-pow((d - r) / max(w, 0.0001), 2.0));
+        float p = 0.55 + 0.45 * sin((d - r) * 46.0 - t * 2.2);
+        ripple += g * p;
+        splashTrain += exp(-c * 18.0);
+      }
+      ripple = max(0.0, ripple);
+      float splash = exp(-d * 22.0) * splashTrain;
+      vec3 waterTint = vec3(0.10, 0.16, 0.24);
+      col = clamp(
+        col + waterTint * ripple * (0.09 * uAnimStrength) + vec3(1.0) * splash * (0.045 * uAnimStrength),
+        0.0,
+        1.0
+      );
+    } else if (uAnimStyle >= 5.5 && uAnimStyle < 6.5) {
+      // Rotate: no extra fragment modulation to avoid pulse-like layer feel.
     }
 
     if (uEffectType > 0.5) {
@@ -426,10 +489,13 @@ export class MeshRenderer {
       smooth: 2,
       pulse: 3,
       wave: 4,
+      waterDrop: 5,
+      rotate: 6,
     }
     u.uAnimStyle.value = styleMap[animation.style]
     u.uAnimSpeed.value = animation.speed
-    u.uAnimStrength.value = animation.strength
+    const strengthBoost = animation.style === 'smooth' ? 1.16 : 1.22
+    u.uAnimStrength.value = animation.strength * strengthBoost
   }
 
   setEffect(effect: EffectSettings) {
@@ -448,6 +514,7 @@ export class MeshRenderer {
       rhombus: 10,
       hexagon: 0,
       squares: 0,
+      pixelation: 0,
       glass: 0,
     }
     u.uEffectType.value = styleMap[effect.type]

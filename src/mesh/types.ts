@@ -11,7 +11,7 @@ export interface Color {
 }
 
 export type HandleType = 'mirrorAngle' | 'mirrorLength' | 'free'
-export type AnimationStyle = 'static' | 'fluid' | 'smooth' | 'pulse' | 'wave'
+export type AnimationStyle = 'static' | 'fluid' | 'smooth' | 'pulse' | 'wave' | 'waterDrop' | 'rotate'
 export type EffectType =
   | 'none'
   | 'wavy'
@@ -26,6 +26,7 @@ export type EffectType =
   | 'rhombus'
   | 'hexagon'
   | 'squares'
+  | 'pixelation'
   | 'glass'
 
 export type GlassShape = 'strips' | 'grid' | 'circle'
@@ -114,6 +115,11 @@ export interface SquaresSettings {
   strokeWidth: number
   strokeOpacity: number
   randomOpacity: number
+}
+
+export interface PixelationSettings {
+  pixelSize: number
+  density: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

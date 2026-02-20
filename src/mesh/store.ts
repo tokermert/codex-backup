@@ -14,6 +14,7 @@ import type {
   GlassShape,
   HexagonSettings,
   SquaresSettings,
+  PixelationSettings,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -33,6 +34,7 @@ export interface EditorState {
   glass: GlassSettings
   hexagon: HexagonSettings
   squares: SquaresSettings
+  pixelation: PixelationSettings
 }
 
 class EditorStore {
@@ -132,6 +134,10 @@ class EditorStore {
         strokeWidth: 2,
         strokeOpacity: 0.8,
         randomOpacity: 0.5,
+      },
+      pixelation: {
+        pixelSize: 12,
+        density: 1,
       },
     }
     this.snapshot()
@@ -330,6 +336,7 @@ class EditorStore {
       rhombus: { scale: 10, rotate: 0 },
       hexagon: { scale: 71, rotate: 0 },
       squares: { scale: 100, rotate: 0 },
+      pixelation: { scale: 12, rotate: 0 },
       glass: { scale: 30, rotate: 0 },
     }
     if (type !== 'none') {
@@ -508,6 +515,24 @@ class EditorStore {
         break
       case 'randomOpacity':
         this.state.squares.randomOpacity = clamp(value, 0, 2)
+        break
+      default:
+        break
+    }
+    this.notify()
+  }
+
+  setPixelationParam(
+    key: keyof PixelationSettings,
+    value: number,
+  ) {
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+    switch (key) {
+      case 'pixelSize':
+        this.state.pixelation.pixelSize = Math.round(clamp(value, 2, 64))
+        break
+      case 'density':
+        this.state.pixelation.density = clamp(value, 0.1, 1)
         break
       default:
         break

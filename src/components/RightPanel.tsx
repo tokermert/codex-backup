@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { store } from '../mesh/store'
-import type { AnimationStyle, Color, EffectType, GlassSettings, GlassShape, HexagonSettings, SquaresSettings } from '../mesh/types'
+import type {
+  AnimationStyle,
+  Color,
+  EffectType,
+  GlassSettings,
+  GlassShape,
+  HexagonSettings,
+  PixelationSettings,
+  SquaresSettings,
+} from '../mesh/types'
 
 const panel: React.CSSProperties = {
   width: 268,
@@ -72,10 +81,12 @@ const valuePill: React.CSSProperties = {
 
 const ANIM_STYLES: { key: AnimationStyle; label: string }[] = [
   { key: 'static', label: 'Static' },
-  { key: 'fluid', label: 'Fluid' },
+  { key: 'fluid', label: 'Ocean' },
   { key: 'smooth', label: 'Smooth' },
   { key: 'pulse', label: 'Pulse' },
   { key: 'wave', label: 'Wave' },
+  { key: 'waterDrop', label: 'Water Drop' },
+  { key: 'rotate', label: 'Rotate' },
 ]
 
 const ANIM_PRESETS = [
@@ -104,6 +115,7 @@ const EFFECT_TYPES: { key: EffectType; label: string }[] = [
   { key: 'rhombus', label: 'Rhombus' },
   { key: 'hexagon', label: 'Hexagon' },
   { key: 'squares', label: 'Squares' },
+  { key: 'pixelation', label: 'Pixelation' },
   { key: 'glass', label: 'Glass' },
 ]
 
@@ -140,6 +152,7 @@ const EFFECT_CONTROL_CONFIG: Record<EffectType, {
   rhombus:  { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
   hexagon:  { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
   squares:  { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  pixelation: { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4, scaleMax: 64 },
   glass:    { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
 }
 
@@ -219,6 +232,25 @@ const formatSquaresValue = (
   return value.toFixed(2)
 }
 
+const PIXELATION_SLIDERS: Array<{
+  key: keyof PixelationSettings
+  label: string
+  min: number
+  max: number
+  step: number
+}> = [
+  { key: 'pixelSize', label: 'Pixel Size', min: 2, max: 64, step: 1 },
+  { key: 'density', label: 'Density', min: 0.1, max: 1, step: 0.01 },
+]
+
+const formatPixelationValue = (
+  key: keyof PixelationSettings,
+  value: number,
+) => {
+  if (key === 'pixelSize') return String(Math.round(value))
+  return value.toFixed(2)
+}
+
 export default function RightPanel() {
   const [, setTick] = useState(0)
 
@@ -240,6 +272,7 @@ export default function RightPanel() {
   const glass = store.state.glass
   const hexagon = store.state.hexagon
   const squares = store.state.squares
+  const pixelation = store.state.pixelation
   const noise = store.state.noise
 
   return (
@@ -258,7 +291,7 @@ export default function RightPanel() {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: isStatic ? 0 : 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: isStatic ? 0 : 12 }}>
           {ANIM_STYLES.filter(item => item.key !== 'static').map(item => (
             <button
               key={item.key}
@@ -493,6 +526,31 @@ export default function RightPanel() {
                       style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
                     />
                     {idx !== SQUARES_SLIDERS.length - 1 && (
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginTop: 10 }} />
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {effect.type === 'pixelation' && (
+              <>
+                {PIXELATION_SLIDERS.map((slider, idx) => (
+                  <div key={slider.key} style={{ marginBottom: idx === PIXELATION_SLIDERS.length - 1 ? 0 : 10 }}>
+                    <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>{slider.label}</span>
+                      <span style={valuePill}>{formatPixelationValue(slider.key, pixelation[slider.key])}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={slider.min}
+                      max={slider.max}
+                      step={slider.step}
+                      value={pixelation[slider.key]}
+                      onChange={e => store.setPixelationParam(slider.key, Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                    />
+                    {idx !== PIXELATION_SLIDERS.length - 1 && (
                       <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginTop: 10 }} />
                     )}
                   </div>

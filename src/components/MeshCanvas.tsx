@@ -275,6 +275,7 @@ const GLASS_FRAGMENT_SHADER = `
 
 export default function MeshCanvas() {
   const glCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const pixelationCanvasRef = useRef<HTMLCanvasElement>(null)
   const hexagonCanvasRef = useRef<HTMLCanvasElement>(null)
   const squaresCanvasRef = useRef<HTMLCanvasElement>(null)
   const glassCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -290,6 +291,12 @@ export default function MeshCanvas() {
     imageData: ImageData | null
     w: number
     h: number
+  } | null>(null)
+  const pixelationScratchRef = useRef<{
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D | null
+    cols: number
+    rows: number
   } | null>(null)
   const hexagonDrawKeyRef = useRef('')
   const squaresDrawKeyRef = useRef('')
@@ -620,6 +627,76 @@ export default function MeshCanvas() {
     }
   }, [])
 
+  // ── Pixelation post-fx (ported from pixelation-effect.html) ───────────────
+  const drawPixelationOverlay = useCallback(() => {
+    const canvas = pixelationCanvasRef.current
+    const sourceCanvas = glCanvasRef.current
+    if (!canvas || !sourceCanvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const { effect, pixelation } = store.state
+    const W = canvas.width
+    const H = canvas.height
+    if (W <= 0 || H <= 0) return
+
+    if (effect.type !== 'pixelation') {
+      ctx.clearRect(0, 0, W, H)
+      return
+    }
+
+    const pixelSize = Math.max(2, Math.round(pixelation.pixelSize || 12))
+    const density = Math.max(0.1, Math.min(1, pixelation.density))
+    const cols = Math.ceil(W / pixelSize)
+    const rows = Math.ceil(H / pixelSize)
+
+    let scratch = pixelationScratchRef.current
+    if (!scratch) {
+      const tiny = document.createElement('canvas')
+      scratch = {
+        canvas: tiny,
+        ctx: tiny.getContext('2d'),
+        cols: 0,
+        rows: 0,
+      }
+      pixelationScratchRef.current = scratch
+    }
+
+    if (scratch.cols !== cols || scratch.rows !== rows) {
+      scratch.canvas.width = cols
+      scratch.canvas.height = rows
+      scratch.cols = cols
+      scratch.rows = rows
+    }
+
+    const tc = scratch.ctx
+    if (!tc) return
+    tc.imageSmoothingEnabled = true
+    tc.clearRect(0, 0, cols, rows)
+    tc.drawImage(sourceCanvas, 0, 0, cols, rows)
+    const pixels = tc.getImageData(0, 0, cols, rows).data
+
+    ctx.clearRect(0, 0, W, H)
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const idx = (row * cols + col) * 4
+        const r = pixels[idx]
+        const g = pixels[idx + 1]
+        const b = pixels[idx + 2]
+
+        const px = col * pixelSize
+        const py = row * pixelSize
+        const blockW = Math.max(1, Math.floor(pixelSize * density))
+        const blockH = Math.max(1, Math.floor(pixelSize * density))
+        const marginX = Math.floor((pixelSize - blockW) / 2)
+        const marginY = Math.floor((pixelSize - blockH) / 2)
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`
+        ctx.fillRect(px + marginX, py + marginY, blockW, blockH)
+      }
+    }
+  }, [])
+
   // ── Film grain overlay (reference technique: per-frame ImageData noise) ───
   const drawNoiseOverlay = useCallback((tSec: number) => {
     const canvas = noiseCanvasRef.current
@@ -851,6 +928,7 @@ export default function MeshCanvas() {
         : anim
       renderer.setAnimation(effectiveAnimation, now / 1000)
       renderer.render()
+      drawPixelationOverlay()
       drawHexagonOverlay()
       drawSquaresOverlay()
       drawGlassOverlay()
@@ -870,7 +948,7 @@ export default function MeshCanvas() {
         glassGLRef.current = null
       }
     }
-  }, [drawOverlay, drawGlassOverlay, drawHexagonOverlay, drawNoiseOverlay, drawSquaresOverlay])
+  }, [drawOverlay, drawGlassOverlay, drawHexagonOverlay, drawNoiseOverlay, drawPixelationOverlay, drawSquaresOverlay])
 
   // ── ResizeObserver ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -900,6 +978,12 @@ export default function MeshCanvas() {
       if (noiseCanvas) {
         noiseCanvas.width = w
         noiseCanvas.height = h
+      }
+
+      const pixelationCanvas = pixelationCanvasRef.current
+      if (pixelationCanvas) {
+        pixelationCanvas.width = w
+        pixelationCanvas.height = h
       }
 
       const hexagonCanvas = hexagonCanvasRef.current
@@ -1070,6 +1154,20 @@ export default function MeshCanvas() {
           width: '100%',
           height: '100%',
           borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
+      {/* Pixelation post-fx overlay */}
+      <canvas
+        ref={pixelationCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          borderRadius: VIEWPORT_RADIUS,
+          imageRendering: 'pixelated',
         }}
       />
 

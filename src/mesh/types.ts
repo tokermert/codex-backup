@@ -69,7 +69,9 @@ export interface EffectSettings {
 }
 
 export interface NoiseSettings {
+  enabled: boolean
   animated: boolean
+  color: Color
   intensity: number
   size: number
   speed: number

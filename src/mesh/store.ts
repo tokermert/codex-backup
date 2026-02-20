@@ -83,10 +83,17 @@ class EditorStore {
         rotate: 0,
       },
       noise: {
-        animated: true,
-        intensity: 0.22,
-        size: 1,
-        speed: 1,
+        enabled: false,
+        animated: false,
+        color: {
+          r: 1,
+          g: 1,
+          b: 1,
+          a: 1,
+        },
+        intensity: 0.30,
+        size: 1.34,
+        speed: 0.40,
       },
     }
     this.snapshot()
@@ -325,8 +332,18 @@ class EditorStore {
     this.notify()
   }
 
+  setNoiseEnabled(enabled: boolean) {
+    this.state.noise.enabled = enabled
+    this.notify()
+  }
+
   setNoiseIntensity(intensity: number) {
     this.state.noise.intensity = Math.max(0, Math.min(1, intensity))
+    this.notify()
+  }
+
+  setNoiseColor(color: Color) {
+    this.state.noise.color = { ...color, a: 1 }
     this.notify()
   }
 
@@ -336,7 +353,7 @@ class EditorStore {
   }
 
   setNoiseSpeed(speed: number) {
-    this.state.noise.speed = Math.max(0, Math.min(4, speed))
+    this.state.noise.speed = Math.max(0, Math.min(1.5, speed))
     this.notify()
   }
 

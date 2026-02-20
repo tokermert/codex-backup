@@ -20,11 +20,19 @@ interface DragState {
 
 export default function MeshCanvas() {
   const glCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const noiseCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef   = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef  = useRef<MeshRenderer | null>(null)
   const dragRef      = useRef<DragState | null>(null)
   const reducedMotionRef = useRef(false)
+  const noiseScratchRef = useRef<{
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D | null
+    imageData: ImageData | null
+    w: number
+    h: number
+  } | null>(null)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
 
   useEffect(() => {
@@ -33,6 +41,89 @@ export default function MeshCanvas() {
     update()
     mql.addEventListener('change', update)
     return () => mql.removeEventListener('change', update)
+  }, [])
+
+  // ── Film grain overlay (reference technique: per-frame ImageData noise) ───
+  const drawNoiseOverlay = useCallback((tSec: number) => {
+    const canvas = noiseCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const { noise } = store.state
+    const W = canvas.width
+    const H = canvas.height
+    if (W <= 0 || H <= 0) return
+
+    if (!noise.enabled || noise.intensity <= 0.0001) {
+      ctx.clearRect(0, 0, W, H)
+      return
+    }
+
+    const intensity = noise.intensity
+    const size = Math.max(0.5, noise.size)
+    const speed = Math.max(0, noise.speed)
+    const tintR = Math.max(0, Math.min(1, noise.color.r))
+    const tintG = Math.max(0, Math.min(1, noise.color.g))
+    const tintB = Math.max(0, Math.min(1, noise.color.b))
+    const downW = Math.max(1, Math.floor(W / size))
+    const downH = Math.max(1, Math.floor(H / size))
+    const frameFloat = noise.animated ? (tSec * speed * 60) : 0
+    const seed0 = Math.floor(frameFloat)
+    const seed1 = seed0 + 1
+    const t = frameFloat - seed0
+    const blend = t * t * (3 - 2 * t)
+
+    let scratch = noiseScratchRef.current
+    if (!scratch) {
+      const off = document.createElement('canvas')
+      scratch = {
+        canvas: off,
+        ctx: off.getContext('2d'),
+        imageData: null,
+        w: 0,
+        h: 0,
+      }
+      noiseScratchRef.current = scratch
+    }
+
+    if (scratch.w !== downW || scratch.h !== downH || !scratch.imageData) {
+      scratch.canvas.width = downW
+      scratch.canvas.height = downH
+      scratch.imageData = ctx.createImageData(downW, downH)
+      scratch.w = downW
+      scratch.h = downH
+    }
+
+    const img = scratch.imageData
+    const data = img.data
+
+    for (let i = 0; i < data.length; i += 4) {
+      const p = i / 4
+      const idx0 = p + seed0 * 12345
+      const idx1 = p + seed1 * 12345
+      const rr0 = Math.sin(idx0 * 127.1 + seed0) * 43758.5453
+      const rr1 = Math.sin(idx1 * 127.1 + seed1) * 43758.5453
+      const r0 = rr0 - Math.floor(rr0)
+      const r1 = rr1 - Math.floor(rr1)
+      const r = noise.animated ? (r0 * (1 - blend) + r1 * blend) : r0
+      const grain = (r - 0.5) * 255 * intensity
+      const mag = Math.abs(grain)
+      // Stronger tint response: selected color pushes grain highlights/shadows per channel.
+      const tr = tintR * 2 - 1
+      const tg = tintG * 2 - 1
+      const tb = tintB * 2 - 1
+      data[i] = Math.max(0, Math.min(255, 128 + grain + tr * mag * 1.45))
+      data[i + 1] = Math.max(0, Math.min(255, 128 + grain + tg * mag * 1.45))
+      data[i + 2] = Math.max(0, Math.min(255, 128 + grain + tb * mag * 1.45))
+      data[i + 3] = Math.min(255, Math.abs(grain) * 2.2)
+    }
+
+    scratch.ctx?.putImageData(img, 0, 0)
+
+    ctx.clearRect(0, 0, W, H)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(scratch.canvas, 0, 0, W, H)
   }, [])
 
   // ── Draw overlay (mesh lines + points + handles) ──────────────────────────
@@ -164,11 +255,10 @@ export default function MeshCanvas() {
     rendererRef.current = renderer
 
     const tick = () => {
-      const { grid, subdivision, canvasBackground, effect, noise } = store.state
+      const { grid, subdivision, canvasBackground, effect } = store.state
       renderer.subdivision = subdivision
       renderer.setBackground(canvasBackground)
       renderer.setEffect(effect)
-      renderer.setNoise(noise)
       renderer.update(grid)
       drawOverlay()
     }
@@ -184,6 +274,7 @@ export default function MeshCanvas() {
         : anim
       renderer.setAnimation(effectiveAnimation, now / 1000)
       renderer.render()
+      drawNoiseOverlay(now / 1000)
       rafId = requestAnimationFrame(frame)
     }
     rafId = requestAnimationFrame(frame)
@@ -193,7 +284,7 @@ export default function MeshCanvas() {
       unsub()
       renderer.dispose()
     }
-  }, [drawOverlay])
+  }, [drawOverlay, drawNoiseOverlay])
 
   // ── ResizeObserver ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -217,6 +308,12 @@ export default function MeshCanvas() {
         overlay.height = oh * dpr
         overlay.style.width  = ow + 'px'
         overlay.style.height = oh + 'px'
+      }
+
+      const noiseCanvas = noiseCanvasRef.current
+      if (noiseCanvas) {
+        noiseCanvas.width = w
+        noiseCanvas.height = h
       }
 
       drawOverlay()
@@ -369,6 +466,21 @@ export default function MeshCanvas() {
           width: '100%',
           height: '100%',
           borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
+      {/* Film grain noise overlay */}
+      <canvas
+        ref={noiseCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          borderRadius: VIEWPORT_RADIUS,
+          mixBlendMode: 'overlay',
+          opacity: 1,
         }}
       />
 

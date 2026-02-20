@@ -24,9 +24,11 @@ export type EffectType =
   | 'boxes'
   | 'triangle'
   | 'rhombus'
+  | 'hexagon'
+  | 'squares'
   | 'glass'
 
-export type GlassShape = 'strips' | 'grid'
+export type GlassShape = 'strips' | 'grid' | 'circle'
 
 export interface Handles {
   left: Vec2
@@ -91,6 +93,27 @@ export interface GlassSettings {
   frost: number
   bevel: number
   corner: number
+  ringThickness: number
+}
+
+export interface HexagonSettings {
+  color: Color
+  opacity: number
+  size: number
+  density: number
+  strokeWidth: number
+  strokeOpacity: number
+  randomOpacity: number
+}
+
+export interface SquaresSettings {
+  color: Color
+  opacity: number
+  size: number
+  density: number
+  strokeWidth: number
+  strokeOpacity: number
+  randomOpacity: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

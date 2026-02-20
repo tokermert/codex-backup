@@ -12,6 +12,8 @@ import type {
   NoiseSettings,
   GlassSettings,
   GlassShape,
+  HexagonSettings,
+  SquaresSettings,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -29,6 +31,8 @@ export interface EditorState {
   effect: EffectSettings
   noise: NoiseSettings
   glass: GlassSettings
+  hexagon: HexagonSettings
+  squares: SquaresSettings
 }
 
 class EditorStore {
@@ -109,6 +113,25 @@ class EditorStore {
         frost: 0.05,
         bevel: 0.28,
         corner: 0.027,
+        ringThickness: 0.32,
+      },
+      hexagon: {
+        color: { r: 1, g: 1, b: 1, a: 1 },
+        opacity: 10,
+        size: 71,
+        density: 0.7,
+        strokeWidth: 0.8,
+        strokeOpacity: 1,
+        randomOpacity: 0.5,
+      },
+      squares: {
+        color: { r: 1, g: 1, b: 1, a: 1 },
+        opacity: 10,
+        size: 100,
+        density: 0.65,
+        strokeWidth: 2,
+        strokeOpacity: 0.8,
+        randomOpacity: 0.5,
       },
     }
     this.snapshot()
@@ -305,6 +328,8 @@ class EditorStore {
       boxes: { scale: 20, rotate: 0 },
       triangle: { scale: 10, rotate: 0 },
       rhombus: { scale: 10, rotate: 0 },
+      hexagon: { scale: 71, rotate: 0 },
+      squares: { scale: 100, rotate: 0 },
       glass: { scale: 30, rotate: 0 },
     }
     if (type !== 'none') {
@@ -410,6 +435,79 @@ class EditorStore {
         break
       case 'corner':
         this.state.glass.corner = clamp(value, 0, 0.033)
+        break
+      case 'ringThickness':
+        this.state.glass.ringThickness = clamp(value, 0.05, 1)
+        break
+      default:
+        break
+    }
+    this.notify()
+  }
+
+  setHexagonColor(color: Color) {
+    this.state.hexagon.color = { ...color, a: 1 }
+    this.notify()
+  }
+
+  setHexagonParam(
+    key: Exclude<keyof HexagonSettings, 'color'>,
+    value: number,
+  ) {
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+    switch (key) {
+      case 'opacity':
+        this.state.hexagon.opacity = clamp(value, 0, 45)
+        break
+      case 'size':
+        this.state.hexagon.size = clamp(value, 20, 150)
+        break
+      case 'density':
+        this.state.hexagon.density = clamp(value, 0.1, 1)
+        break
+      case 'strokeWidth':
+        this.state.hexagon.strokeWidth = clamp(value, 0.5, 5)
+        break
+      case 'strokeOpacity':
+        this.state.hexagon.strokeOpacity = clamp(value, 0, 1)
+        break
+      case 'randomOpacity':
+        this.state.hexagon.randomOpacity = clamp(value, 0, 2)
+        break
+      default:
+        break
+    }
+    this.notify()
+  }
+
+  setSquaresColor(color: Color) {
+    this.state.squares.color = { ...color, a: 1 }
+    this.notify()
+  }
+
+  setSquaresParam(
+    key: Exclude<keyof SquaresSettings, 'color'>,
+    value: number,
+  ) {
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+    switch (key) {
+      case 'opacity':
+        this.state.squares.opacity = clamp(value, 0, 45)
+        break
+      case 'size':
+        this.state.squares.size = clamp(value, 20, 150)
+        break
+      case 'density':
+        this.state.squares.density = clamp(value, 0.1, 1)
+        break
+      case 'strokeWidth':
+        this.state.squares.strokeWidth = clamp(value, 1, 8)
+        break
+      case 'strokeOpacity':
+        this.state.squares.strokeOpacity = clamp(value, 0, 1)
+        break
+      case 'randomOpacity':
+        this.state.squares.randomOpacity = clamp(value, 0, 2)
         break
       default:
         break

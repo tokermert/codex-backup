@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { store } from '../mesh/store'
-import type { AnimationStyle, Color, EffectType, GlassSettings } from '../mesh/types'
+import type { AnimationStyle, Color, EffectType, GlassSettings, GlassShape, HexagonSettings, SquaresSettings } from '../mesh/types'
 
 const panel: React.CSSProperties = {
   width: 268,
@@ -102,6 +102,8 @@ const EFFECT_TYPES: { key: EffectType; label: string }[] = [
   { key: 'boxes', label: 'Boxes' },
   { key: 'triangle', label: 'Triangle' },
   { key: 'rhombus', label: 'Rhombus' },
+  { key: 'hexagon', label: 'Hexagon' },
+  { key: 'squares', label: 'Squares' },
   { key: 'glass', label: 'Glass' },
 ]
 
@@ -136,6 +138,8 @@ const EFFECT_CONTROL_CONFIG: Record<EffectType, {
   boxes:    { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 96 },
   triangle: { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
   rhombus:  { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  hexagon:  { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  squares:  { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
   glass:    { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
 }
 
@@ -145,17 +149,19 @@ const GLASS_SLIDERS: Array<{
   min: number
   max: number
   step: number
-  showForShape?: 'grid'
+  showForShape?: GlassShape
+  hideForShape?: GlassShape
 }> = [
   { key: 'cells', label: 'Cells', min: 3, max: 17, step: 1 },
   { key: 'distortion', label: 'Distortion', min: 0, max: 200, step: 1 },
-  { key: 'angle', label: 'Angle', min: 0, max: 360, step: 1 },
+  { key: 'angle', label: 'Angle', min: 0, max: 360, step: 1, hideForShape: 'circle' },
   { key: 'aberration', label: 'Aberration', min: 0, max: 3, step: 0.01 },
   { key: 'ior', label: 'IOR', min: 1, max: 2.5, step: 0.01 },
   { key: 'fresnel', label: 'Fresnel', min: 0, max: 1, step: 0.01 },
   { key: 'frost', label: 'Frost', min: 0, max: 4, step: 0.01 },
   { key: 'bevel', label: 'Bevel', min: 0, max: 0.5, step: 0.01, showForShape: 'grid' },
   { key: 'corner', label: 'Corner', min: 0, max: 0.033, step: 0.001, showForShape: 'grid' },
+  { key: 'ringThickness', label: 'Thickness', min: 0.05, max: 1, step: 0.01, showForShape: 'circle' },
 ]
 
 const formatGlassValue = (
@@ -164,6 +170,52 @@ const formatGlassValue = (
 ) => {
   if (key === 'cells' || key === 'distortion' || key === 'angle') return String(Math.round(value))
   if (key === 'corner') return value.toFixed(3)
+  return value.toFixed(2)
+}
+
+const HEXAGON_SLIDERS: Array<{
+  key: Exclude<keyof HexagonSettings, 'color'>
+  label: string
+  min: number
+  max: number
+  step: number
+}> = [
+  { key: 'opacity', label: 'Opacity', min: 0, max: 45, step: 0.5 },
+  { key: 'size', label: 'Size', min: 20, max: 150, step: 1 },
+  { key: 'density', label: 'Density', min: 0.1, max: 1, step: 0.05 },
+  { key: 'strokeWidth', label: 'Stroke Width', min: 0.5, max: 5, step: 0.25 },
+  { key: 'strokeOpacity', label: 'Stroke Opacity', min: 0, max: 1, step: 0.05 },
+  { key: 'randomOpacity', label: 'Random Opacity', min: 0, max: 2, step: 0.05 },
+]
+
+const formatHexagonValue = (
+  key: Exclude<keyof HexagonSettings, 'color'>,
+  value: number,
+) => {
+  if (key === 'size') return String(Math.round(value))
+  return value.toFixed(2)
+}
+
+const SQUARES_SLIDERS: Array<{
+  key: Exclude<keyof SquaresSettings, 'color'>
+  label: string
+  min: number
+  max: number
+  step: number
+}> = [
+  { key: 'opacity', label: 'Opacity', min: 0, max: 45, step: 0.5 },
+  { key: 'size', label: 'Size', min: 20, max: 150, step: 1 },
+  { key: 'density', label: 'Density', min: 0.1, max: 1, step: 0.05 },
+  { key: 'strokeWidth', label: 'Stroke Width', min: 1, max: 8, step: 0.5 },
+  { key: 'strokeOpacity', label: 'Stroke Opacity', min: 0, max: 1, step: 0.05 },
+  { key: 'randomOpacity', label: 'Random Opacity', min: 0, max: 2, step: 0.05 },
+]
+
+const formatSquaresValue = (
+  key: Exclude<keyof SquaresSettings, 'color'>,
+  value: number,
+) => {
+  if (key === 'size') return String(Math.round(value))
   return value.toFixed(2)
 }
 
@@ -186,6 +238,8 @@ export default function RightPanel() {
   const effect = store.state.effect
   const effectCfg = EFFECT_CONTROL_CONFIG[effect.type]
   const glass = store.state.glass
+  const hexagon = store.state.hexagon
+  const squares = store.state.squares
   const noise = store.state.noise
 
   return (
@@ -295,7 +349,7 @@ export default function RightPanel() {
               <>
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginBottom: 8 }}>Shape</div>
-                  <div style={{ ...row, marginBottom: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
                     <button
                       style={{
                         ...modeBtn(glass.shape === 'strips'),
@@ -318,12 +372,23 @@ export default function RightPanel() {
                     >
                       Grid
                     </button>
+                    <button
+                      style={{
+                        ...modeBtn(glass.shape === 'circle'),
+                        borderColor: glass.shape === 'circle' ? 'rgba(255,100,170,0.8)' : 'rgba(255,255,255,0.09)',
+                        background: glass.shape === 'circle' ? 'rgba(255,100,170,0.16)' : 'rgba(255,255,255,0.04)',
+                        color: glass.shape === 'circle' ? 'rgba(255,130,185,0.95)' : 'rgba(255,255,255,0.45)',
+                      }}
+                      onClick={() => store.setGlassShape('circle')}
+                    >
+                      Circle
+                    </button>
                   </div>
                   <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 10 }} />
                 </div>
 
                 {GLASS_SLIDERS
-                  .filter(s => !s.showForShape || s.showForShape === glass.shape)
+                  .filter(s => (!s.showForShape || s.showForShape === glass.shape) && (!s.hideForShape || s.hideForShape !== glass.shape))
                   .map((slider, idx, arr) => (
                     <div key={slider.key} style={{ marginBottom: idx === arr.length - 1 ? 0 : 10 }}>
                       <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
@@ -344,6 +409,94 @@ export default function RightPanel() {
                       )}
                     </div>
                   ))}
+              </>
+            )}
+
+            {effect.type === 'hexagon' && (
+              <>
+                <div style={{ ...row, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Color</span>
+                  <input
+                    type="color"
+                    value={toHex(hexagon.color)}
+                    onChange={e => store.setHexagonColor(c(e.target.value))}
+                    style={{
+                      width: 44,
+                      height: 28,
+                      padding: 0,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 5,
+                      background: 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <input style={inputStyle} readOnly value={toHex(hexagon.color).toUpperCase()} />
+                </div>
+
+                {HEXAGON_SLIDERS.map((slider, idx) => (
+                  <div key={slider.key} style={{ marginBottom: idx === HEXAGON_SLIDERS.length - 1 ? 0 : 10 }}>
+                    <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>{slider.label}</span>
+                      <span style={valuePill}>{formatHexagonValue(slider.key, hexagon[slider.key])}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={slider.min}
+                      max={slider.max}
+                      step={slider.step}
+                      value={hexagon[slider.key]}
+                      onChange={e => store.setHexagonParam(slider.key, Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                    />
+                    {idx !== HEXAGON_SLIDERS.length - 1 && (
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginTop: 10 }} />
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {effect.type === 'squares' && (
+              <>
+                <div style={{ ...row, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Color</span>
+                  <input
+                    type="color"
+                    value={toHex(squares.color)}
+                    onChange={e => store.setSquaresColor(c(e.target.value))}
+                    style={{
+                      width: 44,
+                      height: 28,
+                      padding: 0,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 5,
+                      background: 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <input style={inputStyle} readOnly value={toHex(squares.color).toUpperCase()} />
+                </div>
+
+                {SQUARES_SLIDERS.map((slider, idx) => (
+                  <div key={slider.key} style={{ marginBottom: idx === SQUARES_SLIDERS.length - 1 ? 0 : 10 }}>
+                    <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>{slider.label}</span>
+                      <span style={valuePill}>{formatSquaresValue(slider.key, squares[slider.key])}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={slider.min}
+                      max={slider.max}
+                      step={slider.step}
+                      value={squares[slider.key]}
+                      onChange={e => store.setSquaresParam(slider.key, Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                    />
+                    {idx !== SQUARES_SLIDERS.length - 1 && (
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginTop: 10 }} />
+                    )}
+                  </div>
+                ))}
               </>
             )}
 

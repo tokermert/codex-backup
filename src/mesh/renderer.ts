@@ -446,6 +446,8 @@ export class MeshRenderer {
       boxes: 8,
       triangle: 9,
       rhombus: 10,
+      hexagon: 0,
+      squares: 0,
       glass: 0,
     }
     u.uEffectType.value = styleMap[effect.type]

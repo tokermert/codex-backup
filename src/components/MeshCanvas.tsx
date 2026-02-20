@@ -42,6 +42,7 @@ interface GlassGLResources {
     uFrost: WebGLUniformLocation | null
     uBevel: WebGLUniformLocation | null
     uCornerRadius: WebGLUniformLocation | null
+    uRingThickness: WebGLUniformLocation | null
   }
 }
 
@@ -70,6 +71,7 @@ const GLASS_FRAGMENT_SHADER = `
   uniform float uFrost;
   uniform float uBevel;
   uniform float uCornerRadius;
+  uniform float uRingThickness;
 
   #define PI 3.14159265359
 
@@ -141,9 +143,29 @@ const GLASS_FRAGMENT_SHADER = `
     return vec4(normal2D.x, normal2D.y, edgeDist, variation);
   }
 
-  vec4 getPattern(vec2 uv, float cells, int shape, float bevelWidth, float cornerRadius) {
+  vec4 patternCircle(vec2 uv, float cells, float ringThickness) {
+    // Global concentric rings from canvas center (not per-cell circles).
+    float r = length(uv);
+    float ringPos = r * max(1.0, cells);
+    float local = fract(ringPos);
+    float t = (local - 0.5) * 2.0;
+    float k = mix(2.8, 0.8, clamp(ringThickness, 0.05, 1.0));
+    float tt = t * k;
+
+    vec2 dir = r > 0.0001 ? normalize(uv) : vec2(1.0, 0.0);
+    float edgeDist = clamp(cos(tt * PI * 0.5), 0.0, 1.0);
+    float normalMag = sin(tt * PI * 0.5) * edgeDist;
+    vec2 normal2D = dir * normalMag;
+
+    float ringId = floor(ringPos);
+    float variation = hash(vec2(ringId, 0.0)) * 0.2 + 0.9;
+    return vec4(normal2D.x, normal2D.y, edgeDist, variation);
+  }
+
+  vec4 getPattern(vec2 uv, float cells, int shape, float bevelWidth, float cornerRadius, float ringThickness) {
     if (shape == 0) return patternStrips(uv, cells);
     if (shape == 1) return patternGrid(uv, cells, bevelWidth, cornerRadius);
+    if (shape == 2) return patternCircle(uv, cells, ringThickness);
     return patternStrips(uv, cells);
   }
 
@@ -226,7 +248,7 @@ const GLASS_FRAGMENT_SHADER = `
     vec2 aspectCorrectedUV = vec2(centeredUV.x * aspect, centeredUV.y);
     vec2 rotatedUV = rotate(aspectCorrectedUV, uAngle);
 
-    vec4 pattern = getPattern(rotatedUV, uCells, uShape, uBevel, uCornerRadius);
+    vec4 pattern = getPattern(rotatedUV, uCells, uShape, uBevel, uCornerRadius, uRingThickness);
     vec2 surfaceNormal = pattern.xy;
     float edgeDist = pattern.z;
     float cellVariation = pattern.w;
@@ -253,6 +275,8 @@ const GLASS_FRAGMENT_SHADER = `
 
 export default function MeshCanvas() {
   const glCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const hexagonCanvasRef = useRef<HTMLCanvasElement>(null)
+  const squaresCanvasRef = useRef<HTMLCanvasElement>(null)
   const glassCanvasRef = useRef<HTMLCanvasElement>(null)
   const noiseCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef   = useRef<HTMLCanvasElement>(null)
@@ -267,6 +291,8 @@ export default function MeshCanvas() {
     w: number
     h: number
   } | null>(null)
+  const hexagonDrawKeyRef = useRef('')
+  const squaresDrawKeyRef = useRef('')
   const glassCaptureRef = useRef<GlassCaptureState | null>(null)
   const glassGLRef = useRef<GlassGLResources | null>(null)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
@@ -353,6 +379,7 @@ export default function MeshCanvas() {
       uFrost: gl.getUniformLocation(program, 'uFrost'),
       uBevel: gl.getUniformLocation(program, 'uBevel'),
       uCornerRadius: gl.getUniformLocation(program, 'uCornerRadius'),
+      uRingThickness: gl.getUniformLocation(program, 'uRingThickness'),
     }
 
     glassGLRef.current = { canvas, gl, program, texture, uniforms }
@@ -413,16 +440,185 @@ export default function MeshCanvas() {
     if (uniforms.uFresnel) gl.uniform1f(uniforms.uFresnel, glass.fresnel)
     if (uniforms.uBevel) gl.uniform1f(uniforms.uBevel, glass.shape === 'grid' ? glass.bevel : 0)
     if (uniforms.uCornerRadius) gl.uniform1f(uniforms.uCornerRadius, glass.shape === 'grid' ? glass.corner : 0)
+    if (uniforms.uRingThickness) gl.uniform1f(uniforms.uRingThickness, glass.ringThickness)
     if (uniforms.uAberration) gl.uniform1f(uniforms.uAberration, glass.aberration)
-    if (uniforms.uAngle) gl.uniform1f(uniforms.uAngle, (glass.angle * Math.PI) / 180)
+    if (uniforms.uAngle) gl.uniform1f(uniforms.uAngle, glass.shape === 'circle' ? 0 : ((glass.angle * Math.PI) / 180))
     if (uniforms.uEdge) gl.uniform1f(uniforms.uEdge, 0.5)
-    if (uniforms.uShape) gl.uniform1i(uniforms.uShape, glass.shape === 'strips' ? 0 : 1)
+    if (uniforms.uShape) {
+      const shapeId = glass.shape === 'strips' ? 0 : (glass.shape === 'grid' ? 1 : 2)
+      gl.uniform1i(uniforms.uShape, shapeId)
+    }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
     ctx.clearRect(0, 0, W, H)
     ctx.drawImage(resources.canvas, 0, 0)
   }, [initGlassGL])
+
+  const drawHexagonOverlay = useCallback(() => {
+    const canvas = hexagonCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const { effect, hexagon } = store.state
+    const W = canvas.width
+    const H = canvas.height
+    if (W <= 0 || H <= 0) return
+
+    if (effect.type !== 'hexagon') {
+      if (hexagonDrawKeyRef.current !== '') {
+        ctx.clearRect(0, 0, W, H)
+        hexagonDrawKeyRef.current = ''
+      }
+      return
+    }
+
+    const key = [
+      W,
+      H,
+      hexagon.color.r.toFixed(4),
+      hexagon.color.g.toFixed(4),
+      hexagon.color.b.toFixed(4),
+      hexagon.opacity.toFixed(4),
+      hexagon.size.toFixed(4),
+      hexagon.density.toFixed(4),
+      hexagon.strokeWidth.toFixed(4),
+      hexagon.strokeOpacity.toFixed(4),
+      hexagon.randomOpacity.toFixed(4),
+    ].join('|')
+    if (key === hexagonDrawKeyRef.current) return
+    hexagonDrawKeyRef.current = key
+
+    const fillBaseAlpha = Math.max(0, Math.min(1, hexagon.opacity / 100))
+    const size = Math.max(20, Math.min(150, hexagon.size))
+    const density = Math.max(0.1, Math.min(1, hexagon.density))
+    const strokeWidth = Math.max(0.5, Math.min(5, hexagon.strokeWidth))
+    const strokeOpacity = Math.max(0, Math.min(1, hexagon.strokeOpacity))
+    const randomOpacity = Math.max(0, Math.min(1, hexagon.randomOpacity))
+
+    const cr = Math.round(Math.max(0, Math.min(1, hexagon.color.r)) * 255)
+    const cg = Math.round(Math.max(0, Math.min(1, hexagon.color.g)) * 255)
+    const cb = Math.round(Math.max(0, Math.min(1, hexagon.color.b)) * 255)
+    const rgba = (a: number) => `rgba(${cr},${cg},${cb},${Math.max(0, Math.min(1, a))})`
+
+    const width = size
+    const height = size * 0.8660254037844386
+    const xOffset = width * 0.75
+    const yOffset = height
+    const cols = Math.ceil(W / xOffset) + 2
+    const rows = Math.ceil(H / yOffset) + 2
+
+    const hash2 = (x: number, y: number, salt: number) => {
+      const n = Math.sin((x + salt) * 127.1 + (y + salt) * 311.7) * 43758.5453123
+      return n - Math.floor(n)
+    }
+
+    ctx.clearRect(0, 0, W, H)
+    ctx.lineJoin = 'miter'
+    ctx.lineCap = 'butt'
+    ctx.lineWidth = strokeWidth
+    ctx.strokeStyle = rgba(strokeOpacity)
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (hash2(col, row, 11) > density) continue
+
+        const x = col * xOffset
+        const y = row * yOffset + (col % 2 === 1 ? yOffset / 2 : 0)
+        const opacityNoise = Math.max(0, Math.min(1, 1 - randomOpacity + hash2(col, row, 47) * randomOpacity))
+        const fillOpacity = fillBaseAlpha * opacityNoise
+
+        ctx.beginPath()
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 3) * i
+          const hx = x + (size / 2) * Math.cos(angle)
+          const hy = y + (size / 2) * Math.sin(angle)
+          if (i === 0) ctx.moveTo(hx, hy)
+          else ctx.lineTo(hx, hy)
+        }
+        ctx.closePath()
+        ctx.fillStyle = rgba(fillOpacity)
+        ctx.fill()
+        if (strokeOpacity > 0 && strokeWidth > 0) ctx.stroke()
+      }
+    }
+  }, [])
+
+  const drawSquaresOverlay = useCallback(() => {
+    const canvas = squaresCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const { effect, squares } = store.state
+    const W = canvas.width
+    const H = canvas.height
+    if (W <= 0 || H <= 0) return
+
+    if (effect.type !== 'squares') {
+      if (squaresDrawKeyRef.current !== '') {
+        ctx.clearRect(0, 0, W, H)
+        squaresDrawKeyRef.current = ''
+      }
+      return
+    }
+
+    const key = [
+      W,
+      H,
+      squares.color.r.toFixed(4),
+      squares.color.g.toFixed(4),
+      squares.color.b.toFixed(4),
+      squares.opacity.toFixed(4),
+      squares.size.toFixed(4),
+      squares.density.toFixed(4),
+      squares.strokeWidth.toFixed(4),
+      squares.strokeOpacity.toFixed(4),
+      squares.randomOpacity.toFixed(4),
+    ].join('|')
+    if (key === squaresDrawKeyRef.current) return
+    squaresDrawKeyRef.current = key
+
+    const fillBaseAlpha = Math.max(0, Math.min(1, squares.opacity / 100))
+    const size = Math.max(20, Math.min(150, squares.size))
+    const density = Math.max(0.1, Math.min(1, squares.density))
+    const strokeWidth = Math.max(1, Math.min(8, squares.strokeWidth))
+    const strokeOpacity = Math.max(0, Math.min(1, squares.strokeOpacity))
+    const randomOpacity = Math.max(0, Math.min(1, squares.randomOpacity))
+
+    const cr = Math.round(Math.max(0, Math.min(1, squares.color.r)) * 255)
+    const cg = Math.round(Math.max(0, Math.min(1, squares.color.g)) * 255)
+    const cb = Math.round(Math.max(0, Math.min(1, squares.color.b)) * 255)
+    const rgba = (a: number) => `rgba(${cr},${cg},${cb},${Math.max(0, Math.min(1, a))})`
+
+    const cols = Math.ceil(W / size) + 1
+    const rows = Math.ceil(H / size) + 1
+
+    const hash2 = (x: number, y: number, salt: number) => {
+      const n = Math.sin((x + salt) * 127.1 + (y + salt) * 311.7) * 43758.5453123
+      return n - Math.floor(n)
+    }
+
+    ctx.clearRect(0, 0, W, H)
+    ctx.lineWidth = strokeWidth
+    ctx.strokeStyle = rgba(strokeOpacity)
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (hash2(col, row, 17) > density) continue
+
+        const x = col * size
+        const y = row * size
+        const opacityNoise = Math.max(0, Math.min(1, 1 - randomOpacity + hash2(col, row, 59) * randomOpacity))
+        const fillOpacity = fillBaseAlpha * opacityNoise
+
+        ctx.fillStyle = rgba(fillOpacity)
+        ctx.fillRect(x, y, size, size)
+        if (strokeOpacity > 0 && strokeWidth > 0) ctx.strokeRect(x, y, size, size)
+      }
+    }
+  }, [])
 
   // ── Film grain overlay (reference technique: per-frame ImageData noise) ───
   const drawNoiseOverlay = useCallback((tSec: number) => {
@@ -655,6 +851,8 @@ export default function MeshCanvas() {
         : anim
       renderer.setAnimation(effectiveAnimation, now / 1000)
       renderer.render()
+      drawHexagonOverlay()
+      drawSquaresOverlay()
       drawGlassOverlay()
       drawNoiseOverlay(now / 1000)
       rafId = requestAnimationFrame(frame)
@@ -672,7 +870,7 @@ export default function MeshCanvas() {
         glassGLRef.current = null
       }
     }
-  }, [drawOverlay, drawGlassOverlay, drawNoiseOverlay])
+  }, [drawOverlay, drawGlassOverlay, drawHexagonOverlay, drawNoiseOverlay, drawSquaresOverlay])
 
   // ── ResizeObserver ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -702,6 +900,18 @@ export default function MeshCanvas() {
       if (noiseCanvas) {
         noiseCanvas.width = w
         noiseCanvas.height = h
+      }
+
+      const hexagonCanvas = hexagonCanvasRef.current
+      if (hexagonCanvas) {
+        hexagonCanvas.width = w
+        hexagonCanvas.height = h
+      }
+
+      const squaresCanvas = squaresCanvasRef.current
+      if (squaresCanvas) {
+        squaresCanvas.width = w
+        squaresCanvas.height = h
       }
 
       const glassCanvas = glassCanvasRef.current
@@ -859,6 +1069,32 @@ export default function MeshCanvas() {
           display: 'block',
           width: '100%',
           height: '100%',
+          borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
+      {/* Hexagon effect overlay */}
+      <canvas
+        ref={hexagonCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
+      {/* Squares effect overlay */}
+      <canvas
+        ref={squaresCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
           borderRadius: VIEWPORT_RADIUS,
         }}
       />

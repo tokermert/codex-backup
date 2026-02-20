@@ -24,6 +24,9 @@ export type EffectType =
   | 'boxes'
   | 'triangle'
   | 'rhombus'
+  | 'glass'
+
+export type GlassShape = 'strips' | 'grid'
 
 export interface Handles {
   left: Vec2
@@ -75,6 +78,19 @@ export interface NoiseSettings {
   intensity: number
   size: number
   speed: number
+}
+
+export interface GlassSettings {
+  shape: GlassShape
+  cells: number
+  distortion: number
+  angle: number
+  aberration: number
+  ior: number
+  fresnel: number
+  frost: number
+  bevel: number
+  corner: number
 }
 
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

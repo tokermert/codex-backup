@@ -10,6 +10,8 @@ import type {
   EffectSettings,
   EffectType,
   NoiseSettings,
+  GlassSettings,
+  GlassShape,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -26,6 +28,7 @@ export interface EditorState {
   canvasBackground: CanvasBackgroundSettings
   effect: EffectSettings
   noise: NoiseSettings
+  glass: GlassSettings
 }
 
 class EditorStore {
@@ -94,6 +97,18 @@ class EditorStore {
         intensity: 0.30,
         size: 1.34,
         speed: 0.40,
+      },
+      glass: {
+        shape: 'grid',
+        cells: 17,
+        distortion: 0,
+        angle: 0,
+        aberration: 3.0,
+        ior: 2.03,
+        fresnel: 0.31,
+        frost: 0.05,
+        bevel: 0.28,
+        corner: 0.027,
       },
     }
     this.snapshot()
@@ -290,6 +305,7 @@ class EditorStore {
       boxes: { scale: 20, rotate: 0 },
       triangle: { scale: 10, rotate: 0 },
       rhombus: { scale: 10, rotate: 0 },
+      glass: { scale: 30, rotate: 0 },
     }
     if (type !== 'none') {
       const p = presets[type]
@@ -354,6 +370,50 @@ class EditorStore {
 
   setNoiseSpeed(speed: number) {
     this.state.noise.speed = Math.max(0, Math.min(1.5, speed))
+    this.notify()
+  }
+
+  setGlassShape(shape: GlassShape) {
+    this.state.glass.shape = shape
+    this.notify()
+  }
+
+  setGlassParam(
+    key: Exclude<keyof GlassSettings, 'shape'>,
+    value: number,
+  ) {
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+    switch (key) {
+      case 'cells':
+        this.state.glass.cells = Math.round(clamp(value, 3, 17))
+        break
+      case 'distortion':
+        this.state.glass.distortion = clamp(value, 0, 200)
+        break
+      case 'angle':
+        this.state.glass.angle = clamp(value, 0, 360)
+        break
+      case 'aberration':
+        this.state.glass.aberration = clamp(value, 0, 3)
+        break
+      case 'ior':
+        this.state.glass.ior = clamp(value, 1, 2.5)
+        break
+      case 'fresnel':
+        this.state.glass.fresnel = clamp(value, 0, 1)
+        break
+      case 'frost':
+        this.state.glass.frost = clamp(value, 0, 4)
+        break
+      case 'bevel':
+        this.state.glass.bevel = clamp(value, 0, 0.5)
+        break
+      case 'corner':
+        this.state.glass.corner = clamp(value, 0, 0.033)
+        break
+      default:
+        break
+    }
     this.notify()
   }
 

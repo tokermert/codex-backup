@@ -446,6 +446,7 @@ export class MeshRenderer {
       boxes: 8,
       triangle: 9,
       rhombus: 10,
+      glass: 0,
     }
     u.uEffectType.value = styleMap[effect.type]
     u.uEffectColor.value.setRGB(effect.color.r, effect.color.g, effect.color.b)

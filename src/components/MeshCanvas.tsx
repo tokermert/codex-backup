@@ -18,8 +18,242 @@ interface DragState {
   lastY: number
 }
 
+interface GlassCaptureState {
+  canvas: HTMLCanvasElement
+  ctx: CanvasRenderingContext2D | null
+}
+
+interface GlassGLResources {
+  canvas: HTMLCanvasElement
+  gl: WebGLRenderingContext
+  program: WebGLProgram
+  texture: WebGLTexture
+  uniforms: {
+    tDiffuse: WebGLUniformLocation | null
+    resolution: WebGLUniformLocation | null
+    uShape: WebGLUniformLocation | null
+    uCells: WebGLUniformLocation | null
+    uDistortion: WebGLUniformLocation | null
+    uAngle: WebGLUniformLocation | null
+    uAberration: WebGLUniformLocation | null
+    uEdge: WebGLUniformLocation | null
+    uIOR: WebGLUniformLocation | null
+    uFresnel: WebGLUniformLocation | null
+    uFrost: WebGLUniformLocation | null
+    uBevel: WebGLUniformLocation | null
+    uCornerRadius: WebGLUniformLocation | null
+  }
+}
+
+const GLASS_VERTEX_SHADER = `
+  attribute vec2 a_pos;
+  varying vec2 v_uv;
+  void main() {
+    v_uv = a_pos * 0.5 + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
+`
+
+const GLASS_FRAGMENT_SHADER = `
+  precision highp float;
+  varying vec2 v_uv;
+  uniform sampler2D tDiffuse;
+  uniform vec2 resolution;
+  uniform int uShape;
+  uniform float uCells;
+  uniform float uDistortion;
+  uniform float uAngle;
+  uniform float uAberration;
+  uniform float uEdge;
+  uniform float uIOR;
+  uniform float uFresnel;
+  uniform float uFrost;
+  uniform float uBevel;
+  uniform float uCornerRadius;
+
+  #define PI 3.14159265359
+
+  vec2 rotate(vec2 v, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
+  }
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  vec4 patternStrips(vec2 uv, float cells) {
+    float stripPos = uv.x * cells;
+    float localX = fract(stripPos);
+    float t = (localX - 0.5) * 2.0;
+    float normalX = sin(t * PI * 0.5);
+    float normalY = 0.0;
+    float edgeDist = cos(t * PI * 0.5);
+    vec2 cellId = vec2(floor(stripPos), 0.0);
+    float variation = hash(cellId) * 0.2 + 0.9;
+    return vec4(normalX, normalY, edgeDist, variation);
+  }
+
+  vec4 patternGrid(vec2 uv, float cells, float bevelWidth, float cornerRadius) {
+    vec2 cellPos = uv * cells;
+    vec2 local = fract(cellPos) - 0.5;
+    float dist;
+    vec2 normal2D = vec2(0.0);
+    vec2 absLocal = abs(local);
+
+    if (cornerRadius > 0.001) {
+      float k = 1.0 / (cornerRadius * 2.0 + 0.01);
+      float smoothMaxVal = log(exp(k * absLocal.x) + exp(k * absLocal.y)) / k;
+      dist = 0.5 - smoothMaxVal;
+      float eps = 0.005;
+      vec2 dxLocal = absLocal + vec2(eps, 0.0);
+      vec2 dyLocal = absLocal + vec2(0.0, eps);
+      float dxSmooth = log(exp(k * dxLocal.x) + exp(k * dxLocal.y)) / k;
+      float dySmooth = log(exp(k * dyLocal.x) + exp(k * dyLocal.y)) / k;
+      vec2 grad = vec2(dxSmooth - smoothMaxVal, dySmooth - smoothMaxVal) / eps;
+      if (length(grad) > 0.01) {
+        normal2D = normalize(grad) * sign(local);
+      }
+    } else {
+      float boxD = max(absLocal.x, absLocal.y);
+      dist = 0.5 - boxD;
+      if (absLocal.x > absLocal.y) {
+        normal2D = vec2(sign(local.x), 0.0);
+      } else {
+        normal2D = vec2(0.0, sign(local.y));
+      }
+    }
+
+    if (dist < 0.0) return vec4(0.0, 0.0, 0.0, 1.0);
+
+    if (bevelWidth > 0.001) {
+      float refractionStrength = 1.0 - smoothstep(0.0, bevelWidth, dist);
+      normal2D *= refractionStrength;
+    } else {
+      normal2D = vec2(0.0);
+    }
+
+    float edgeDist = bevelWidth > 0.001 ? smoothstep(0.0, bevelWidth, dist) : 1.0;
+    edgeDist = clamp(edgeDist, 0.0, 1.0);
+    vec2 cellId = floor(cellPos);
+    float variation = hash(cellId) * 0.2 + 0.9;
+    return vec4(normal2D.x, normal2D.y, edgeDist, variation);
+  }
+
+  vec4 getPattern(vec2 uv, float cells, int shape, float bevelWidth, float cornerRadius) {
+    if (shape == 0) return patternStrips(uv, cells);
+    if (shape == 1) return patternGrid(uv, cells, bevelWidth, cornerRadius);
+    return patternStrips(uv, cells);
+  }
+
+  vec2 refract2D(vec2 incident, vec2 normal, float eta) {
+    float cosI = -dot(incident, normal);
+    float sinT2 = eta * eta * (1.0 - cosI * cosI);
+    if (sinT2 > 1.0) return reflect(incident, normal);
+    float cosT = sqrt(1.0 - sinT2);
+    return eta * incident + (eta * cosI - cosT) * normal;
+  }
+
+  float fresnelSchlick(float cosTheta, float ior) {
+    float r0 = pow((1.0 - ior) / (1.0 + ior), 2.0);
+    return r0 + (1.0 - r0) * pow(1.0 - cosTheta, 5.0);
+  }
+
+  vec3 kawaseBlur(vec2 uv, vec2 pixelSize, float radius) {
+    vec3 c = vec3(0.0);
+    vec2 o = pixelSize * radius;
+    c += texture2D(tDiffuse, clamp(uv, vec2(0.0), vec2(1.0))).rgb * 0.4;
+    c += texture2D(tDiffuse, clamp(uv + vec2(-o.x, 0.0), vec2(0.0), vec2(1.0))).rgb * 0.15;
+    c += texture2D(tDiffuse, clamp(uv + vec2( o.x, 0.0), vec2(0.0), vec2(1.0))).rgb * 0.15;
+    c += texture2D(tDiffuse, clamp(uv + vec2(0.0, -o.y), vec2(0.0), vec2(1.0))).rgb * 0.15;
+    c += texture2D(tDiffuse, clamp(uv + vec2(0.0,  o.y), vec2(0.0), vec2(1.0))).rgb * 0.15;
+    return c;
+  }
+
+  vec3 frostBlur(vec2 uv, vec2 pixelSize, float frostAmount) {
+    if (frostAmount < 0.01) return texture2D(tDiffuse, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+    float maxRadius = 20.0;
+    float baseRadius = frostAmount * maxRadius;
+    vec3 c = vec3(0.0);
+    if (frostAmount < 1.0) {
+      c += kawaseBlur(uv, pixelSize, baseRadius * 0.3) * 0.2;
+      c += kawaseBlur(uv, pixelSize, baseRadius * 0.6) * 0.3;
+      c += kawaseBlur(uv, pixelSize, baseRadius * 1.0) * 0.5;
+    } else {
+      c += kawaseBlur(uv, pixelSize, baseRadius * 0.25) * 0.1;
+      c += kawaseBlur(uv, pixelSize, baseRadius * 0.5)  * 0.2;
+      c += kawaseBlur(uv, pixelSize, baseRadius * 0.75) * 0.3;
+      c += kawaseBlur(uv, pixelSize, baseRadius * 1.0)  * 0.4;
+    }
+    return c;
+  }
+
+  vec3 sampleWithFrost(vec2 uv, vec2 pixelSize, float frostAmount) {
+    if (frostAmount < 0.01) return texture2D(tDiffuse, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+    return frostBlur(uv, pixelSize, frostAmount);
+  }
+
+  vec3 sampleWithAberration(vec2 baseUV, vec2 refractOffset, float aberration, vec2 pixelSize, float frostAmount) {
+    if (aberration < 0.01) return sampleWithFrost(baseUV + refractOffset, pixelSize, frostAmount);
+    float dispersionStrength = aberration * 0.5;
+    vec3 color = vec3(0.0);
+    vec3 weights = vec3(0.0);
+    int samples = 24;
+    if (frostAmount > 0.01) samples = frostAmount < 1.0 ? 12 : 8;
+    for (int i = 0; i < 24; i++) {
+      if (i >= samples) break;
+      float t = float(i) / float(samples - 1);
+      float scale = 1.0 + (t - 0.5) * 2.0 * dispersionStrength;
+      vec2 sampleUV = baseUV + refractOffset * scale;
+      vec3 texSample = sampleWithFrost(sampleUV, pixelSize, frostAmount);
+      float rWeight = exp(-4.0 * t * t);
+      float gWeight = exp(-4.0 * (t - 0.5) * (t - 0.5));
+      float bWeight = exp(-4.0 * (t - 1.0) * (t - 1.0));
+      color.r += texSample.r * rWeight;
+      color.g += texSample.g * gWeight;
+      color.b += texSample.b * bWeight;
+      weights += vec3(rWeight, gWeight, bWeight);
+    }
+    return color / max(weights, vec3(0.001));
+  }
+
+  void main() {
+    vec2 uv = v_uv;
+    vec2 pixelSize = 1.0 / resolution;
+    float aspect = resolution.x / resolution.y;
+    vec2 centeredUV = uv - 0.5;
+    vec2 aspectCorrectedUV = vec2(centeredUV.x * aspect, centeredUV.y);
+    vec2 rotatedUV = rotate(aspectCorrectedUV, uAngle);
+
+    vec4 pattern = getPattern(rotatedUV, uCells, uShape, uBevel, uCornerRadius);
+    vec2 surfaceNormal = pattern.xy;
+    float edgeDist = pattern.z;
+    float cellVariation = pattern.w;
+
+    surfaceNormal = rotate(surfaceNormal, -uAngle);
+    surfaceNormal.x /= aspect;
+    surfaceNormal *= cellVariation;
+
+    float cosTheta = max(edgeDist, 0.1);
+    float eta = 1.0 / uIOR;
+    vec2 incident = vec2(0.0, -1.0);
+    vec2 refracted = refract2D(incident, surfaceNormal, eta);
+    float edgeBoost = 1.0 + (1.0 - edgeDist) * 0.3;
+    vec2 refractOffset = (refracted - incident) * pixelSize * uDistortion * 0.5 * edgeBoost;
+
+    vec3 color = sampleWithAberration(uv, refractOffset, uAberration, pixelSize, uFrost);
+    float fresnelFactor = fresnelSchlick(cosTheta, uIOR);
+    if (uFresnel > 0.01) {
+      color = mix(color, color * 1.3 + vec3(0.1), fresnelFactor * uFresnel * 0.5);
+    }
+    gl_FragColor = vec4(color, 1.0);
+  }
+`
+
 export default function MeshCanvas() {
   const glCanvasRef  = useRef<HTMLCanvasElement>(null)
+  const glassCanvasRef = useRef<HTMLCanvasElement>(null)
   const noiseCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef   = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -33,6 +267,8 @@ export default function MeshCanvas() {
     w: number
     h: number
   } | null>(null)
+  const glassCaptureRef = useRef<GlassCaptureState | null>(null)
+  const glassGLRef = useRef<GlassGLResources | null>(null)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
 
   useEffect(() => {
@@ -42,6 +278,151 @@ export default function MeshCanvas() {
     mql.addEventListener('change', update)
     return () => mql.removeEventListener('change', update)
   }, [])
+
+  const initGlassGL = useCallback(() => {
+    if (glassGLRef.current) return glassGLRef.current
+
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: false })
+    if (!gl) return null
+
+    const compileShader = (type: number, source: string) => {
+      const shader = gl.createShader(type)
+      if (!shader) return null
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('Glass shader compile error:', gl.getShaderInfoLog(shader))
+        gl.deleteShader(shader)
+        return null
+      }
+      return shader
+    }
+
+    const vs = compileShader(gl.VERTEX_SHADER, GLASS_VERTEX_SHADER)
+    const fs = compileShader(gl.FRAGMENT_SHADER, GLASS_FRAGMENT_SHADER)
+    if (!vs || !fs) return null
+
+    const program = gl.createProgram()
+    if (!program) return null
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+    gl.deleteShader(vs)
+    gl.deleteShader(fs)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Glass program link error:', gl.getProgramInfoLog(program))
+      gl.deleteProgram(program)
+      return null
+    }
+
+    const buf = gl.createBuffer()
+    if (!buf) {
+      gl.deleteProgram(program)
+      return null
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+    const posLoc = gl.getAttribLocation(program, 'a_pos')
+    gl.enableVertexAttribArray(posLoc)
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0)
+
+    const texture = gl.createTexture()
+    if (!texture) {
+      gl.deleteBuffer(buf)
+      gl.deleteProgram(program)
+      return null
+    }
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+    const uniforms = {
+      tDiffuse: gl.getUniformLocation(program, 'tDiffuse'),
+      resolution: gl.getUniformLocation(program, 'resolution'),
+      uShape: gl.getUniformLocation(program, 'uShape'),
+      uCells: gl.getUniformLocation(program, 'uCells'),
+      uDistortion: gl.getUniformLocation(program, 'uDistortion'),
+      uAngle: gl.getUniformLocation(program, 'uAngle'),
+      uAberration: gl.getUniformLocation(program, 'uAberration'),
+      uEdge: gl.getUniformLocation(program, 'uEdge'),
+      uIOR: gl.getUniformLocation(program, 'uIOR'),
+      uFresnel: gl.getUniformLocation(program, 'uFresnel'),
+      uFrost: gl.getUniformLocation(program, 'uFrost'),
+      uBevel: gl.getUniformLocation(program, 'uBevel'),
+      uCornerRadius: gl.getUniformLocation(program, 'uCornerRadius'),
+    }
+
+    glassGLRef.current = { canvas, gl, program, texture, uniforms }
+    return glassGLRef.current
+  }, [])
+
+  const drawGlassOverlay = useCallback(() => {
+    const canvas = glassCanvasRef.current
+    const sourceCanvas = glCanvasRef.current
+    if (!canvas || !sourceCanvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const { effect, glass } = store.state
+    const W = canvas.width
+    const H = canvas.height
+    if (W <= 0 || H <= 0) return
+
+    if (effect.type !== 'glass') {
+      ctx.clearRect(0, 0, W, H)
+      return
+    }
+
+    const resources = initGlassGL()
+    if (!resources) {
+      ctx.clearRect(0, 0, W, H)
+      return
+    }
+
+    let capture = glassCaptureRef.current
+    if (!capture) {
+      const capCanvas = document.createElement('canvas')
+      capture = { canvas: capCanvas, ctx: capCanvas.getContext('2d') }
+      glassCaptureRef.current = capture
+    }
+    if (capture.canvas.width !== W || capture.canvas.height !== H) {
+      capture.canvas.width = W
+      capture.canvas.height = H
+    }
+    capture.ctx?.clearRect(0, 0, W, H)
+    capture.ctx?.drawImage(sourceCanvas, 0, 0, W, H)
+
+    const { gl, program, texture, uniforms } = resources
+    resources.canvas.width = W
+    resources.canvas.height = H
+    gl.viewport(0, 0, W, H)
+    gl.useProgram(program)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, capture.canvas)
+
+    if (uniforms.tDiffuse) gl.uniform1i(uniforms.tDiffuse, 0)
+    if (uniforms.resolution) gl.uniform2f(uniforms.resolution, W, H)
+    if (uniforms.uCells) gl.uniform1f(uniforms.uCells, glass.cells)
+    if (uniforms.uDistortion) gl.uniform1f(uniforms.uDistortion, glass.distortion)
+    if (uniforms.uFrost) gl.uniform1f(uniforms.uFrost, glass.frost)
+    if (uniforms.uIOR) gl.uniform1f(uniforms.uIOR, glass.ior)
+    if (uniforms.uFresnel) gl.uniform1f(uniforms.uFresnel, glass.fresnel)
+    if (uniforms.uBevel) gl.uniform1f(uniforms.uBevel, glass.shape === 'grid' ? glass.bevel : 0)
+    if (uniforms.uCornerRadius) gl.uniform1f(uniforms.uCornerRadius, glass.shape === 'grid' ? glass.corner : 0)
+    if (uniforms.uAberration) gl.uniform1f(uniforms.uAberration, glass.aberration)
+    if (uniforms.uAngle) gl.uniform1f(uniforms.uAngle, (glass.angle * Math.PI) / 180)
+    if (uniforms.uEdge) gl.uniform1f(uniforms.uEdge, 0.5)
+    if (uniforms.uShape) gl.uniform1i(uniforms.uShape, glass.shape === 'strips' ? 0 : 1)
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+    ctx.clearRect(0, 0, W, H)
+    ctx.drawImage(resources.canvas, 0, 0)
+  }, [initGlassGL])
 
   // ── Film grain overlay (reference technique: per-frame ImageData noise) ───
   const drawNoiseOverlay = useCallback((tSec: number) => {
@@ -274,6 +655,7 @@ export default function MeshCanvas() {
         : anim
       renderer.setAnimation(effectiveAnimation, now / 1000)
       renderer.render()
+      drawGlassOverlay()
       drawNoiseOverlay(now / 1000)
       rafId = requestAnimationFrame(frame)
     }
@@ -283,8 +665,14 @@ export default function MeshCanvas() {
       cancelAnimationFrame(rafId)
       unsub()
       renderer.dispose()
+      const glass = glassGLRef.current
+      if (glass) {
+        glass.gl.deleteTexture(glass.texture)
+        glass.gl.deleteProgram(glass.program)
+        glassGLRef.current = null
+      }
     }
-  }, [drawOverlay, drawNoiseOverlay])
+  }, [drawOverlay, drawGlassOverlay, drawNoiseOverlay])
 
   // ── ResizeObserver ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -314,6 +702,12 @@ export default function MeshCanvas() {
       if (noiseCanvas) {
         noiseCanvas.width = w
         noiseCanvas.height = h
+      }
+
+      const glassCanvas = glassCanvasRef.current
+      if (glassCanvas) {
+        glassCanvas.width = w
+        glassCanvas.height = h
       }
 
       drawOverlay()
@@ -465,6 +859,19 @@ export default function MeshCanvas() {
           display: 'block',
           width: '100%',
           height: '100%',
+          borderRadius: VIEWPORT_RADIUS,
+        }}
+      />
+
+      {/* Glass distortion overlay */}
+      <canvas
+        ref={glassCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
           borderRadius: VIEWPORT_RADIUS,
         }}
       />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { store } from '../mesh/store'
-import type { AnimationStyle, Color, EffectType } from '../mesh/types'
+import type { AnimationStyle, Color, EffectType, GlassSettings } from '../mesh/types'
 
 const panel: React.CSSProperties = {
   width: 268,
@@ -102,6 +102,7 @@ const EFFECT_TYPES: { key: EffectType; label: string }[] = [
   { key: 'boxes', label: 'Boxes' },
   { key: 'triangle', label: 'Triangle' },
   { key: 'rhombus', label: 'Rhombus' },
+  { key: 'glass', label: 'Glass' },
 ]
 
 const c = (hex: string): Color => {
@@ -135,6 +136,35 @@ const EFFECT_CONTROL_CONFIG: Record<EffectType, {
   boxes:    { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 6,  scaleMax: 96 },
   triangle: { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
   rhombus:  { showColor: true,  showLine: true,  showOpacity: true,  showScale: true,  showRotate: false, scaleMin: 4,  scaleMax: 64 },
+  glass:    { showColor: false, showLine: false, showOpacity: false, showScale: false, showRotate: false, scaleMin: 4,  scaleMax: 64 },
+}
+
+const GLASS_SLIDERS: Array<{
+  key: Exclude<keyof GlassSettings, 'shape'>
+  label: string
+  min: number
+  max: number
+  step: number
+  showForShape?: 'grid'
+}> = [
+  { key: 'cells', label: 'Cells', min: 3, max: 17, step: 1 },
+  { key: 'distortion', label: 'Distortion', min: 0, max: 200, step: 1 },
+  { key: 'angle', label: 'Angle', min: 0, max: 360, step: 1 },
+  { key: 'aberration', label: 'Aberration', min: 0, max: 3, step: 0.01 },
+  { key: 'ior', label: 'IOR', min: 1, max: 2.5, step: 0.01 },
+  { key: 'fresnel', label: 'Fresnel', min: 0, max: 1, step: 0.01 },
+  { key: 'frost', label: 'Frost', min: 0, max: 4, step: 0.01 },
+  { key: 'bevel', label: 'Bevel', min: 0, max: 0.5, step: 0.01, showForShape: 'grid' },
+  { key: 'corner', label: 'Corner', min: 0, max: 0.033, step: 0.001, showForShape: 'grid' },
+]
+
+const formatGlassValue = (
+  key: Exclude<keyof GlassSettings, 'shape'>,
+  value: number,
+) => {
+  if (key === 'cells' || key === 'distortion' || key === 'angle') return String(Math.round(value))
+  if (key === 'corner') return value.toFixed(3)
+  return value.toFixed(2)
 }
 
 export default function RightPanel() {
@@ -155,6 +185,7 @@ export default function RightPanel() {
   const strengthMax = isSmooth ? 2 : 1
   const effect = store.state.effect
   const effectCfg = EFFECT_CONTROL_CONFIG[effect.type]
+  const glass = store.state.glass
   const noise = store.state.noise
 
   return (
@@ -260,6 +291,62 @@ export default function RightPanel() {
 
         {effect.type !== 'none' && (
           <>
+            {effect.type === 'glass' && (
+              <>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginBottom: 8 }}>Shape</div>
+                  <div style={{ ...row, marginBottom: 10 }}>
+                    <button
+                      style={{
+                        ...modeBtn(glass.shape === 'strips'),
+                        borderColor: glass.shape === 'strips' ? 'rgba(255,100,170,0.8)' : 'rgba(255,255,255,0.09)',
+                        background: glass.shape === 'strips' ? 'rgba(255,100,170,0.16)' : 'rgba(255,255,255,0.04)',
+                        color: glass.shape === 'strips' ? 'rgba(255,130,185,0.95)' : 'rgba(255,255,255,0.45)',
+                      }}
+                      onClick={() => store.setGlassShape('strips')}
+                    >
+                      Strips
+                    </button>
+                    <button
+                      style={{
+                        ...modeBtn(glass.shape === 'grid'),
+                        borderColor: glass.shape === 'grid' ? 'rgba(255,100,170,0.8)' : 'rgba(255,255,255,0.09)',
+                        background: glass.shape === 'grid' ? 'rgba(255,100,170,0.16)' : 'rgba(255,255,255,0.04)',
+                        color: glass.shape === 'grid' ? 'rgba(255,130,185,0.95)' : 'rgba(255,255,255,0.45)',
+                      }}
+                      onClick={() => store.setGlassShape('grid')}
+                    >
+                      Grid
+                    </button>
+                  </div>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 10 }} />
+                </div>
+
+                {GLASS_SLIDERS
+                  .filter(s => !s.showForShape || s.showForShape === glass.shape)
+                  .map((slider, idx, arr) => (
+                    <div key={slider.key} style={{ marginBottom: idx === arr.length - 1 ? 0 : 10 }}>
+                      <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>{slider.label}</span>
+                        <span style={valuePill}>{formatGlassValue(slider.key, glass[slider.key])}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={slider.min}
+                        max={slider.max}
+                        step={slider.step}
+                        value={glass[slider.key]}
+                        onChange={e => store.setGlassParam(slider.key, Number(e.target.value))}
+                        style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+                      />
+                      {idx !== arr.length - 1 && (
+                        <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginTop: 10 }} />
+                      )}
+                    </div>
+                  ))}
+              </>
+            )}
+
             {effectCfg.showColor && (
               <div style={{ ...row, marginBottom: 10 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', minWidth: 42 }}>Color</span>

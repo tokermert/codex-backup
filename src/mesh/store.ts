@@ -9,6 +9,7 @@ import type {
   CanvasBackgroundSettings,
   EffectSettings,
   EffectType,
+  NoiseSettings,
 } from './types'
 
 // Simple reactive store using callbacks
@@ -24,6 +25,7 @@ export interface EditorState {
   animation: AnimationSettings
   canvasBackground: CanvasBackgroundSettings
   effect: EffectSettings
+  noise: NoiseSettings
 }
 
 class EditorStore {
@@ -79,6 +81,12 @@ class EditorStore {
         opacity: 0.3,
         scale: 30,
         rotate: 0,
+      },
+      noise: {
+        animated: true,
+        intensity: 0.22,
+        size: 1,
+        speed: 1,
       },
     }
     this.snapshot()
@@ -309,6 +317,26 @@ class EditorStore {
 
   setEffectRotate(rotate: number) {
     this.state.effect.rotate = Math.max(-180, Math.min(180, rotate))
+    this.notify()
+  }
+
+  setNoiseAnimated(animated: boolean) {
+    this.state.noise.animated = animated
+    this.notify()
+  }
+
+  setNoiseIntensity(intensity: number) {
+    this.state.noise.intensity = Math.max(0, Math.min(1, intensity))
+    this.notify()
+  }
+
+  setNoiseSize(size: number) {
+    this.state.noise.size = Math.max(0.1, Math.min(4, size))
+    this.notify()
+  }
+
+  setNoiseSpeed(speed: number) {
+    this.state.noise.speed = Math.max(0, Math.min(4, speed))
     this.notify()
   }
 

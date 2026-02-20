@@ -5,6 +5,7 @@ import type {
   AnimationSettings,
   CanvasBackgroundSettings,
   EffectSettings,
+  NoiseSettings,
 } from './types'
 
 // ─── Shaders (mesh patches) ───────────────────────────────────────────────────
@@ -35,6 +36,10 @@ const fragmentShader = /* glsl */`
   uniform float uEffectScale;
   uniform float uEffectRotate;
   uniform vec2 uViewportSize;
+  uniform float uNoiseAnimated;
+  uniform float uNoiseIntensity;
+  uniform float uNoiseScale;
+  uniform float uNoiseSpeed;
 
   vec3 srgbToLinear(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
@@ -292,6 +297,44 @@ const fragmentShader = /* glsl */`
       col = mix(col, pattern, clamp(uEffectOpacity, 0.0, 1.0));
     }
 
+    if (uNoiseIntensity > 0.0001) {
+      vec2 uv = vec2((vPos.x + 1.0) * 0.5, (1.0 - vPos.y) * 0.5);
+      vec2 pxCoord = floor(uv * max(uViewportSize, vec2(1.0)));
+
+      // Photographic grain: frame-based static (no directional drift), dense mono noise + sparse TV dots.
+      float sizeN = clamp((uNoiseScale - 0.1) / 3.9, 0.0, 1.0);
+      float grainCell = mix(0.55, 2.6, sizeN);
+      vec2 samplePx = floor(pxCoord / grainCell);
+      float frame = (uNoiseAnimated > 0.5) ? floor(uTime * uNoiseSpeed * 24.0) : 0.0;
+      float seed = frame * 137.0;
+
+      float n0 = hash21(samplePx + vec2(12.7 + seed, 78.2 + seed * 0.37));
+      float n1 = hash21(samplePx + vec2(88.1 + seed * 0.71, 3.3 + seed * 1.11));
+      float n2 = hash21(samplePx + vec2(43.6 + seed * 1.33, 59.5 + seed * 0.53));
+      float micro = hash21(pxCoord + vec2(17.0 + seed * 0.91, 29.0 + seed * 1.03));
+      float nc1 = hash21(samplePx + vec2(4.7 + seed * 0.29, 51.4 + seed * 0.83));
+      float nc2 = hash21(samplePx + vec2(61.9 + seed * 0.19, 7.6 + seed * 0.49));
+      float nc3 = hash21(samplePx + vec2(33.8 + seed * 0.41, 91.2 + seed * 0.27));
+
+      // Average multiple random taps for more even dot density (less clumping texture).
+      float monoBase = ((n0 + n1 + n2) / 3.0) - 0.5;
+      float mono = mix(monoBase, micro - 0.5, 0.35);
+      mono = sign(mono) * pow(abs(mono), 0.72);
+
+      float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      float tonal = mix(1.24, 0.9, clamp(luma, 0.0, 1.0));
+      float flicker = (uNoiseAnimated > 0.5) ? mix(0.94, 1.10, hash21(vec2(frame * 0.017, frame * 0.029))) : 1.0;
+      float amount = uNoiseIntensity * 0.72 * tonal * flicker;
+
+      float whiteDot = step(0.996, nc1);
+      float blackDot = step(nc1, 0.004);
+      float tvDot = (whiteDot - blackDot) * (amount * 0.28);
+
+      vec3 chroma = (vec3(nc1, nc2, nc3) - 0.5) * (amount * 0.08);
+      vec3 grain = vec3(mono * amount + tvDot) + chroma;
+      col = clamp(col + grain, 0.0, 1.0);
+    }
+
     vec3 linear = srgbToLinear(col);
     gl_FragColor = vec4(linearToSrgb(linear), vColor.a);
   }
@@ -339,6 +382,10 @@ export class MeshRenderer {
         uEffectScale: { value: 30 },
         uEffectRotate: { value: 0 },
         uViewportSize: { value: new THREE.Vector2(1, 1) },
+        uNoiseAnimated: { value: 1 },
+        uNoiseIntensity: { value: 0.22 },
+        uNoiseScale: { value: 1 },
+        uNoiseSpeed: { value: 1 },
       },
       // Custom shader reads `attribute vec4 color` directly.
       vertexColors: false,
@@ -418,6 +465,14 @@ export class MeshRenderer {
     u.uEffectOpacity.value = effect.opacity
     u.uEffectScale.value = effect.scale
     u.uEffectRotate.value = effect.rotate
+  }
+
+  setNoise(noise: NoiseSettings) {
+    const u = this.material.uniforms
+    u.uNoiseAnimated.value = noise.animated ? 1 : 0
+    u.uNoiseIntensity.value = noise.intensity
+    u.uNoiseScale.value = noise.size
+    u.uNoiseSpeed.value = noise.speed
   }
 
   toDataURL(type = 'image/png'): string {

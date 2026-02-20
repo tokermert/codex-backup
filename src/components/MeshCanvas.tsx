@@ -164,10 +164,11 @@ export default function MeshCanvas() {
     rendererRef.current = renderer
 
     const tick = () => {
-      const { grid, subdivision, canvasBackground, effect } = store.state
+      const { grid, subdivision, canvasBackground, effect, noise } = store.state
       renderer.subdivision = subdivision
       renderer.setBackground(canvasBackground)
       renderer.setEffect(effect)
+      renderer.setNoise(noise)
       renderer.update(grid)
       drawOverlay()
     }

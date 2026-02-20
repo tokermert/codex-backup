@@ -57,6 +57,19 @@ const inputStyle: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 }
 
+const valuePill: React.CSSProperties = {
+  minWidth: 56,
+  padding: '3px 8px',
+  borderRadius: 6,
+  textAlign: 'right',
+  background: 'rgba(255, 70, 120, 0.16)',
+  border: '1px solid rgba(255, 120, 170, 0.12)',
+  color: 'rgba(255, 136, 186, 0.95)',
+  fontSize: 11,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  fontVariantNumeric: 'tabular-nums',
+}
+
 const ANIM_STYLES: { key: AnimationStyle; label: string }[] = [
   { key: 'static', label: 'Static' },
   { key: 'fluid', label: 'Fluid' },
@@ -142,6 +155,7 @@ export default function RightPanel() {
   const strengthMax = isSmooth ? 2 : 1
   const effect = store.state.effect
   const effectCfg = EFFECT_CONTROL_CONFIG[effect.type]
+  const noise = store.state.noise
 
   return (
     <div style={panel} data-scrollbar="panel">
@@ -343,6 +357,96 @@ export default function RightPanel() {
             )}
           </>
         )}
+      </div>
+
+      <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ ...row, justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ ...sectionLabel, marginBottom: 0 }}>Noise</span>
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 1 }}>▼</span>
+        </div>
+
+        <div style={{ ...row, justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>Animated Noise</span>
+          <button
+            onClick={() => store.setNoiseAnimated(!noise.animated)}
+            style={{
+              width: 42,
+              height: 24,
+              borderRadius: 999,
+              border: `1px solid ${noise.animated ? 'rgba(108,99,255,0.7)' : 'rgba(255,255,255,0.16)'}`,
+              background: noise.animated ? 'rgba(108,99,255,0.95)' : 'rgba(255,255,255,0.12)',
+              position: 'relative',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+            aria-label="Toggle animated noise"
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: noise.animated ? 20 : 2,
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#f0efff',
+                transition: 'left 0.12s ease',
+              }}
+            />
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>Intensity</span>
+            <span style={valuePill}>{noise.intensity.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={noise.intensity}
+            onChange={e => store.setNoiseIntensity(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+          />
+        </div>
+
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 12 }} />
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>Size</span>
+            <span style={valuePill}>{noise.size.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min={0.1}
+            max={4}
+            step={0.01}
+            value={noise.size}
+            onChange={e => store.setNoiseSize(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+          />
+        </div>
+
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 12 }} />
+
+        <div>
+          <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>Speed</span>
+            <span style={valuePill}>{noise.speed.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={4}
+            step={0.01}
+            value={noise.speed}
+            onChange={e => store.setNoiseSpeed(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#6c63ff', cursor: 'pointer' }}
+          />
+        </div>
       </div>
     </div>
   )

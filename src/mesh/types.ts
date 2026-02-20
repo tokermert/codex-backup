@@ -68,4 +68,11 @@ export interface EffectSettings {
   rotate: number
 }
 
+export interface NoiseSettings {
+  animated: boolean
+  intensity: number
+  size: number
+  speed: number
+}
+
 export type SelectedHandle = 'left' | 'right' | 'up' | 'down' | null

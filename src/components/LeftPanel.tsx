@@ -141,6 +141,54 @@ const PRESETS: { name: string; colors: ReturnType<typeof c>[][] }[] = [
       [c('#4361ee'), c('#4cc9f0'), c('#f72585')],
     ],
   },
+  {
+    name: 'Deep Space',
+    colors: [
+      [c('#667eea'), c('#764ba2'), c('#f093fb')],
+      [c('#5b6bd7'), c('#6d4598'), c('#e88ae9')],
+      [c('#4d5fc6'), c('#5d3f86'), c('#cf72d5')],
+    ],
+  },
+  {
+    name: 'Warm Sunset',
+    colors: [
+      [c('#ff6b6b'), c('#ff9f6b'), c('#ffe66d')],
+      [c('#f58e72'), c('#f5b36f'), c('#7adac8')],
+      [c('#e85d75'), c('#d79a6b'), c('#4ecdc4')],
+    ],
+  },
+  {
+    name: 'Cyberpunk',
+    colors: [
+      [c('#0a1929'), c('#4a0d42'), c('#ff006e')],
+      [c('#14213d'), c('#7d1b63'), c('#ff8a00')],
+      [c('#1f2a44'), c('#b5179e'), c('#ffbe0b')],
+    ],
+  },
+  {
+    name: 'Mocha',
+    colors: [
+      [c('#5c4033'), c('#a47864'), c('#c4a57b')],
+      [c('#6d4f3f'), c('#9f7f63'), c('#d1b08a')],
+      [c('#8b7355'), c('#b59674'), c('#e8dcc4')],
+    ],
+  },
+  {
+    name: 'Instagram',
+    colors: [
+      [c('#833ab4'), c('#c13584'), c('#fd1d1d')],
+      [c('#9a3eb0'), c('#cf4b58'), c('#f58529')],
+      [c('#7638fa'), c('#d300c5'), c('#fcb045')],
+    ],
+  },
+  {
+    name: 'Mint Sky',
+    colors: [
+      [c('#2af598'), c('#1fd4b6'), c('#00b8d9')],
+      [c('#1ddbb0'), c('#14c3ca'), c('#009efd')],
+      [c('#23e6a0'), c('#52d2ff'), c('#66a6ff')],
+    ],
+  },
 ]
 
 const ARTBOARD_PRESETS = [
@@ -358,7 +406,7 @@ export default function LeftPanel() {
         <span style={sectionLabel}>Grid Size</span>
         <div style={row}>
           {([3, 4, 5] as const).map(n => (
-            <button key={n} style={modeBtn(grid.rows === n && grid.cols === n)} onClick={() => store.resetGrid(n, n)}>
+            <button key={n} style={modeBtn(grid.rows === n && grid.cols === n)} onClick={() => store.setGridSize(n, n)}>
               {n}×{n}
             </button>
           ))}

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { MeshRenderer } from '../mesh/renderer'
+import type {
+  CaptureImageOptions,
+  CaptureImageResult,
+  RecordVideoOptions,
+  RecordVideoResult,
+} from '../mesh/exportApi'
 import { store } from '../mesh/store'
 import type { AnimationSettings } from '../mesh/types'
 
@@ -302,6 +308,8 @@ export default function MeshCanvas() {
   const squaresDrawKeyRef = useRef('')
   const glassCaptureRef = useRef<GlassCaptureState | null>(null)
   const glassGLRef = useRef<GlassGLResources | null>(null)
+  const exportRenderLockRef = useRef(false)
+  const exportScaleRef = useRef<1 | 2 | 3>(1)
   const [cursor, setCursor] = useState<'crosshair' | 'grab' | 'grabbing'>('crosshair')
 
   useEffect(() => {
@@ -400,7 +408,8 @@ export default function MeshCanvas() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const { effect, glass } = store.state
+    const { effect, glass, canvasBackground } = store.state
+    const exportScale = exportScaleRef.current
     const W = canvas.width
     const H = canvas.height
     if (W <= 0 || H <= 0) return
@@ -427,7 +436,32 @@ export default function MeshCanvas() {
       capture.canvas.height = H
     }
     capture.ctx?.clearRect(0, 0, W, H)
-    capture.ctx?.drawImage(sourceCanvas, 0, 0, W, H)
+    if (capture.ctx) {
+      const bg = canvasBackground.color
+      const bgOpacity = Math.max(0, Math.min(1, canvasBackground.opacity))
+      const br = Math.round(Math.max(0, Math.min(1, bg.r)) * 255)
+      const bgc = Math.round(Math.max(0, Math.min(1, bg.g)) * 255)
+      const bb = Math.round(Math.max(0, Math.min(1, bg.b)) * 255)
+
+      // Match viewport behavior: when background is translucent, keep checkerboard in the refraction source.
+      if (bgOpacity < 0.999) {
+        const tile = 20
+        const half = tile / 2
+        capture.ctx.fillStyle = '#d9d9d9'
+        capture.ctx.fillRect(0, 0, W, H)
+        capture.ctx.fillStyle = 'rgba(255,255,255,0.55)'
+        for (let y = 0; y < H; y += tile) {
+          for (let x = 0; x < W; x += tile) {
+            capture.ctx.fillRect(x, y, half, half)
+            capture.ctx.fillRect(x + half, y + half, half, half)
+          }
+        }
+      }
+
+      capture.ctx.fillStyle = `rgba(${br}, ${bgc}, ${bb}, ${bgOpacity})`
+      capture.ctx.fillRect(0, 0, W, H)
+      capture.ctx.drawImage(sourceCanvas, 0, 0, W, H)
+    }
 
     const { gl, program, texture, uniforms } = resources
     resources.canvas.width = W
@@ -436,13 +470,15 @@ export default function MeshCanvas() {
     gl.useProgram(program)
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, capture.canvas)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
 
     if (uniforms.tDiffuse) gl.uniform1i(uniforms.tDiffuse, 0)
     if (uniforms.resolution) gl.uniform2f(uniforms.resolution, W, H)
     if (uniforms.uCells) gl.uniform1f(uniforms.uCells, glass.cells)
-    if (uniforms.uDistortion) gl.uniform1f(uniforms.uDistortion, glass.distortion)
-    if (uniforms.uFrost) gl.uniform1f(uniforms.uFrost, glass.frost)
+    if (uniforms.uDistortion) gl.uniform1f(uniforms.uDistortion, glass.distortion * exportScale)
+    if (uniforms.uFrost) gl.uniform1f(uniforms.uFrost, glass.frost * exportScale)
     if (uniforms.uIOR) gl.uniform1f(uniforms.uIOR, glass.ior)
     if (uniforms.uFresnel) gl.uniform1f(uniforms.uFresnel, glass.fresnel)
     if (uniforms.uBevel) gl.uniform1f(uniforms.uBevel, glass.shape === 'grid' ? glass.bevel : 0)
@@ -469,6 +505,7 @@ export default function MeshCanvas() {
     if (!ctx) return
 
     const { effect, hexagon } = store.state
+    const exportScale = exportScaleRef.current
     const W = canvas.width
     const H = canvas.height
     if (W <= 0 || H <= 0) return
@@ -498,9 +535,9 @@ export default function MeshCanvas() {
     hexagonDrawKeyRef.current = key
 
     const fillBaseAlpha = Math.max(0, Math.min(1, hexagon.opacity / 100))
-    const size = Math.max(20, Math.min(150, hexagon.size))
+    const size = Math.max(20, Math.min(150, hexagon.size)) * exportScale
     const density = Math.max(0.1, Math.min(1, hexagon.density))
-    const strokeWidth = Math.max(0.5, Math.min(5, hexagon.strokeWidth))
+    const strokeWidth = Math.max(0.5, Math.min(5, hexagon.strokeWidth)) * exportScale
     const strokeOpacity = Math.max(0, Math.min(1, hexagon.strokeOpacity))
     const randomOpacity = Math.max(0, Math.min(1, hexagon.randomOpacity))
 
@@ -559,6 +596,7 @@ export default function MeshCanvas() {
     if (!ctx) return
 
     const { effect, squares } = store.state
+    const exportScale = exportScaleRef.current
     const W = canvas.width
     const H = canvas.height
     if (W <= 0 || H <= 0) return
@@ -588,9 +626,9 @@ export default function MeshCanvas() {
     squaresDrawKeyRef.current = key
 
     const fillBaseAlpha = Math.max(0, Math.min(1, squares.opacity / 100))
-    const size = Math.max(20, Math.min(150, squares.size))
+    const size = Math.max(20, Math.min(150, squares.size)) * exportScale
     const density = Math.max(0.1, Math.min(1, squares.density))
-    const strokeWidth = Math.max(1, Math.min(8, squares.strokeWidth))
+    const strokeWidth = Math.max(1, Math.min(8, squares.strokeWidth)) * exportScale
     const strokeOpacity = Math.max(0, Math.min(1, squares.strokeOpacity))
     const randomOpacity = Math.max(0, Math.min(1, squares.randomOpacity))
 
@@ -636,6 +674,7 @@ export default function MeshCanvas() {
     if (!ctx) return
 
     const { effect, pixelation } = store.state
+    const exportScale = exportScaleRef.current
     const W = canvas.width
     const H = canvas.height
     if (W <= 0 || H <= 0) return
@@ -645,7 +684,7 @@ export default function MeshCanvas() {
       return
     }
 
-    const pixelSize = Math.max(2, Math.round(pixelation.pixelSize || 12))
+    const pixelSize = Math.max(2, Math.round((pixelation.pixelSize || 12) * exportScale))
     const density = Math.max(0.1, Math.min(1, pixelation.density))
     const cols = Math.ceil(W / pixelSize)
     const rows = Math.ceil(H / pixelSize)
@@ -705,6 +744,7 @@ export default function MeshCanvas() {
     if (!ctx) return
 
     const { noise } = store.state
+    const exportScale = exportScaleRef.current
     const W = canvas.width
     const H = canvas.height
     if (W <= 0 || H <= 0) return
@@ -715,7 +755,7 @@ export default function MeshCanvas() {
     }
 
     const intensity = noise.intensity
-    const size = Math.max(0.5, noise.size)
+    const size = Math.max(0.5, noise.size * exportScale)
     const speed = Math.max(0, noise.speed)
     const tintR = Math.max(0, Math.min(1, noise.color.r))
     const tintG = Math.max(0, Math.min(1, noise.color.g))
@@ -789,6 +829,7 @@ export default function MeshCanvas() {
 
     const dpr = window.devicePixelRatio || 1
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (!store.state.showMeshOverlay) return
     ctx.save()
     ctx.scale(dpr, dpr)
     ctx.translate(OVERLAY_PAD, OVERLAY_PAD)
@@ -900,6 +941,293 @@ export default function MeshCanvas() {
     ctx.restore()
   }, [])
 
+  const renderAllLayersAtTime = useCallback((tSec: number, refreshGeometry = false) => {
+    const renderer = rendererRef.current
+    if (!renderer) throw new Error('Renderer hazir degil')
+
+    const { grid, subdivision, canvasBackground, effect } = store.state
+    const exportScale = exportScaleRef.current
+    renderer.subdivision = subdivision
+    renderer.setBackground(canvasBackground)
+    const effectForRender = exportScale > 1
+      ? { ...effect, scale: effect.scale * exportScale }
+      : effect
+    renderer.setEffect(effectForRender)
+    if (refreshGeometry) renderer.update(grid)
+
+    const anim = store.state.animation
+    const effectiveAnimation: AnimationSettings = reducedMotionRef.current
+      ? { ...anim, style: 'static', strength: 0 }
+      : anim
+    renderer.setAnimation(effectiveAnimation, tSec)
+    renderer.render()
+    drawPixelationOverlay()
+    drawHexagonOverlay()
+    drawSquaresOverlay()
+    drawGlassOverlay()
+    drawNoiseOverlay(tSec)
+  }, [drawGlassOverlay, drawHexagonOverlay, drawNoiseOverlay, drawPixelationOverlay, drawSquaresOverlay])
+
+  const beginExportRender = useCallback((scale: 1 | 2 | 3) => {
+    const renderer = rendererRef.current
+    const gl = glCanvasRef.current
+    const pixelation = pixelationCanvasRef.current
+    const hexagon = hexagonCanvasRef.current
+    const squares = squaresCanvasRef.current
+    const glass = glassCanvasRef.current
+    const noise = noiseCanvasRef.current
+    if (!renderer || !gl || !pixelation || !hexagon || !squares || !glass || !noise) {
+      throw new Error('Export katmanlari hazir degil')
+    }
+
+    const baseW = Math.max(1, Math.round(store.state.artboardSize.width || store.state.canvasSize.width))
+    const baseH = Math.max(1, Math.round(store.state.artboardSize.height || store.state.canvasSize.height))
+    const outW = baseW * scale
+    const outH = baseH * scale
+
+    const layers = [pixelation, hexagon, squares, glass, noise]
+    const prevViewport = {
+      w: Math.max(1, Math.round(store.state.canvasSize.width)),
+      h: Math.max(1, Math.round(store.state.canvasSize.height)),
+    }
+    const prevPixelRatio = renderer.renderer.getPixelRatio()
+    const prevLayers = layers.map(layer => ({ layer, w: layer.width, h: layer.height }))
+    let restored = false
+
+    exportRenderLockRef.current = true
+    exportScaleRef.current = scale
+    // Export at exact target pixels. Avoid multiplying with device DPR,
+    // which can exceed GPU texture limits and cause black edge artifacts.
+    renderer.renderer.setPixelRatio(1)
+    renderer.setSize(outW, outH)
+    for (const layer of layers) {
+      layer.width = outW
+      layer.height = outH
+    }
+
+    const restore = () => {
+      if (restored) return
+      restored = true
+      renderer.renderer.setPixelRatio(prevPixelRatio)
+      renderer.setSize(prevViewport.w, prevViewport.h)
+      for (const item of prevLayers) {
+        item.layer.width = item.w
+        item.layer.height = item.h
+      }
+      exportRenderLockRef.current = false
+      exportScaleRef.current = 1
+      try {
+        renderAllLayersAtTime(performance.now() / 1000, true)
+      } catch {
+        // no-op: app loop will recover on next frame
+      }
+    }
+
+    return { width: outW, height: outH, restore }
+  }, [renderAllLayersAtTime])
+
+  const composeLayersToCanvas = useCallback((target: HTMLCanvasElement, scale: 1 | 2 | 3) => {
+    const gl = glCanvasRef.current
+    if (!gl) throw new Error('Canvas hazir degil')
+    const baseW = Math.max(1, Math.round(store.state.artboardSize.width || store.state.canvasSize.width))
+    const baseH = Math.max(1, Math.round(store.state.artboardSize.height || store.state.canvasSize.height))
+    const outW = baseW * scale
+    const outH = baseH * scale
+
+    if (target.width !== outW) target.width = outW
+    if (target.height !== outH) target.height = outH
+    const ctx = target.getContext('2d')
+    if (!ctx) throw new Error('2D context alinamadi')
+
+    ctx.clearRect(0, 0, outW, outH)
+    ctx.imageSmoothingEnabled = true
+
+    const layers: Array<{ canvas: HTMLCanvasElement | null; blend: GlobalCompositeOperation }> = [
+      { canvas: glCanvasRef.current, blend: 'source-over' },
+      { canvas: pixelationCanvasRef.current, blend: 'source-over' },
+      { canvas: hexagonCanvasRef.current, blend: 'source-over' },
+      { canvas: squaresCanvasRef.current, blend: 'source-over' },
+      { canvas: glassCanvasRef.current, blend: 'source-over' },
+      // Preview uses CSS mix-blend-mode: overlay for grain; mirror that in export.
+      { canvas: noiseCanvasRef.current, blend: 'overlay' },
+    ]
+
+    for (const layer of layers) {
+      if (!layer.canvas) continue
+      const lw = layer.canvas.width
+      const lh = layer.canvas.height
+      if (lw <= 0 || lh <= 0) continue
+      ctx.save()
+      ctx.globalCompositeOperation = layer.blend
+      ctx.drawImage(layer.canvas, 0, 0, lw, lh, 0, 0, outW, outH)
+      ctx.restore()
+    }
+
+    return { width: outW, height: outH }
+  }, [])
+
+  const canvasToBlob = useCallback((canvas: HTMLCanvasElement, type: string, quality?: number) => {
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (!blob) {
+          reject(new Error('Blob uretilmedi'))
+          return
+        }
+        resolve(blob)
+      }, type, quality)
+    })
+  }, [])
+
+  const captureImage = useCallback(async (options: CaptureImageOptions): Promise<CaptureImageResult> => {
+    const exportSession = beginExportRender(options.scale)
+    const composed = document.createElement('canvas')
+    let width = exportSession.width
+    let height = exportSession.height
+
+    try {
+      renderAllLayersAtTime(performance.now() / 1000, true)
+      const composedSize = composeLayersToCanvas(composed, options.scale)
+      width = composedSize.width
+      height = composedSize.height
+
+      if (options.format === 'png') {
+        const blob = await canvasToBlob(composed, 'image/png')
+        return { blob, ext: 'png', mime: 'image/png', width, height }
+      }
+
+      if (options.format === 'jpeg') {
+        const opaque = document.createElement('canvas')
+        opaque.width = width
+        opaque.height = height
+        const ctx = opaque.getContext('2d')
+        if (!ctx) throw new Error('JPEG surface olusturulamadi')
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(composed, 0, 0)
+        const blob = await canvasToBlob(opaque, 'image/jpeg', 1)
+        return { blob, ext: 'jpg', mime: 'image/jpeg', width, height }
+      }
+
+      // SVG wrapper (raster embedded) to support full effect stack.
+      const pngDataUrl = composed.toDataURL('image/png')
+      const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <image href="${pngDataUrl}" width="${width}" height="${height}" />
+</svg>`
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+      return { blob, ext: 'svg', mime: 'image/svg+xml', width, height }
+    } finally {
+      exportSession.restore()
+    }
+  }, [beginExportRender, canvasToBlob, composeLayersToCanvas, renderAllLayersAtTime])
+
+  const recordVideo = useCallback(async (options: RecordVideoOptions): Promise<RecordVideoResult> => {
+    if (!('MediaRecorder' in window)) {
+      throw new Error('Bu tarayicida video export desteklenmiyor')
+    }
+
+    const exportSession = beginExportRender(options.scale)
+    const captureCanvas = document.createElement('canvas')
+    const { width, height } = composeLayersToCanvas(captureCanvas, options.scale)
+    if (!captureCanvas.captureStream) {
+      exportSession.restore()
+      throw new Error('captureStream desteklenmiyor')
+    }
+
+    const pickMime = (format: 'webm' | 'mp4') => {
+      const mp4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4']
+      const webm = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      const preferred = format === 'mp4' ? mp4 : webm
+      const fallback = format === 'mp4' ? webm : []
+      for (const mime of [...preferred, ...fallback]) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          const ext = mime.includes('mp4') ? 'mp4' : 'webm'
+          return { mime, ext: ext as 'mp4' | 'webm' }
+        }
+      }
+      throw new Error('Uygun video codec bulunamadi')
+    }
+
+    let mime: string
+    let ext: 'webm' | 'mp4'
+    let stream: MediaStream
+    let recorder: MediaRecorder
+    try {
+      const picked = pickMime(options.format)
+      mime = picked.mime
+      ext = picked.ext
+      stream = captureCanvas.captureStream(options.fps)
+      recorder = new MediaRecorder(stream, {
+        mimeType: mime,
+        videoBitsPerSecond: 10_000_000,
+      })
+    } catch (err) {
+      exportSession.restore()
+      throw err
+    }
+    const usedFallback = options.format === 'mp4' && ext !== 'mp4'
+
+    const chunks: BlobPart[] = []
+    recorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) chunks.push(e.data)
+    }
+
+    const startMs = performance.now()
+    renderAllLayersAtTime(startMs / 1000, true)
+    composeLayersToCanvas(captureCanvas, options.scale)
+
+    const draw = () => {
+      const tSec = (startMs + (performance.now() - startMs)) / 1000
+      renderAllLayersAtTime(tSec, false)
+      composeLayersToCanvas(captureCanvas, options.scale)
+    }
+
+    return new Promise<RecordVideoResult>((resolve, reject) => {
+      let intervalId = 0
+      let timeoutId = 0
+      const cleanup = () => {
+        if (intervalId) window.clearInterval(intervalId)
+        if (timeoutId) window.clearTimeout(timeoutId)
+        stream.getTracks().forEach(track => track.stop())
+        exportSession.restore()
+      }
+
+      recorder.onerror = () => {
+        cleanup()
+        reject(new Error('MediaRecorder hatasi'))
+      }
+
+      recorder.onstop = () => {
+        cleanup()
+        if (chunks.length === 0) {
+          reject(new Error('Video kaydi bos cikti'))
+          return
+        }
+        const blob = new Blob(chunks, { type: mime })
+        resolve({ blob, ext, mime, width, height, usedFallback })
+      }
+
+      try {
+        draw()
+        recorder.start()
+        intervalId = window.setInterval(draw, 1000 / options.fps)
+        timeoutId = window.setTimeout(() => {
+          if (recorder.state !== 'inactive') recorder.stop()
+        }, Math.max(1, options.durationSec) * 1000)
+      } catch (err) {
+        cleanup()
+        reject(err instanceof Error ? err : new Error('Video kaydi baslatilamadi'))
+      }
+    })
+  }, [beginExportRender, composeLayersToCanvas, renderAllLayersAtTime])
+
+  useEffect(() => {
+    window.__meshExportApi = { captureImage, recordVideo }
+    return () => {
+      delete window.__meshExportApi
+    }
+  }, [captureImage, recordVideo])
+
   // ── Three.js renderer setup ───────────────────────────────────────────────
   useEffect(() => {
     const canvas = glCanvasRef.current
@@ -922,17 +1250,19 @@ export default function MeshCanvas() {
 
     let rafId = 0
     const frame = (now: number) => {
-      const anim = store.state.animation
-      const effectiveAnimation: AnimationSettings = reducedMotionRef.current
-        ? { ...anim, style: 'static', strength: 0 }
-        : anim
-      renderer.setAnimation(effectiveAnimation, now / 1000)
-      renderer.render()
-      drawPixelationOverlay()
-      drawHexagonOverlay()
-      drawSquaresOverlay()
-      drawGlassOverlay()
-      drawNoiseOverlay(now / 1000)
+      if (!exportRenderLockRef.current) {
+        const anim = store.state.animation
+        const effectiveAnimation: AnimationSettings = reducedMotionRef.current
+          ? { ...anim, style: 'static', strength: 0 }
+          : anim
+        renderer.setAnimation(effectiveAnimation, now / 1000)
+        renderer.render()
+        drawPixelationOverlay()
+        drawHexagonOverlay()
+        drawSquaresOverlay()
+        drawGlassOverlay()
+        drawNoiseOverlay(now / 1000)
+      }
       rafId = requestAnimationFrame(frame)
     }
     rafId = requestAnimationFrame(frame)
@@ -1232,6 +1562,7 @@ export default function MeshCanvas() {
           position: 'absolute',
           left: -OVERLAY_PAD,
           top: -OVERLAY_PAD,
+          pointerEvents: store.state.showMeshOverlay ? 'auto' : 'none',
           cursor,
           touchAction: 'none',
         }}

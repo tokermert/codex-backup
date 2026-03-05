@@ -267,6 +267,7 @@ export default function RightPanel() {
   const speedMax = isSmooth ? 6 : 4
   const strengthMin = isSmooth ? 0.5 : 0
   const strengthMax = isSmooth ? 2 : 1
+  const showMeshOverlay = store.state.showMeshOverlay
   const effect = store.state.effect
   const effectCfg = EFFECT_CONTROL_CONFIG[effect.type]
   const glass = store.state.glass
@@ -358,6 +359,54 @@ export default function RightPanel() {
               />
             </div>
           </>
+        )}
+      </div>
+
+      <div style={{ ...section, borderBottom: 'none', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ ...row, justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ ...sectionLabel, marginBottom: 0 }}>Preview</span>
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 1 }}>▼</span>
+        </div>
+
+        <div style={{ ...row, justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>Mesh Points</span>
+          <button
+            onClick={() => store.setShowMeshOverlay(!showMeshOverlay)}
+            style={{
+              width: 42,
+              height: 24,
+              borderRadius: 999,
+              border: `1px solid ${showMeshOverlay ? 'rgba(108,99,255,0.7)' : 'rgba(255,255,255,0.16)'}`,
+              background: showMeshOverlay ? 'rgba(108,99,255,0.95)' : 'rgba(255,255,255,0.12)',
+              position: 'relative',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+            aria-label="Toggle mesh points"
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: showMeshOverlay ? 20 : 2,
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#f0efff',
+                transition: 'left 0.12s ease',
+              }}
+            />
+          </button>
+        </div>
+
+        {showMeshOverlay ? (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
+            Mesh noktaları, çizgiler ve handle'lar görünür.
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+            Preview modu: Mesh noktaları gizlendi.
+          </div>
         )}
       </div>
 

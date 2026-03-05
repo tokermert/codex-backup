@@ -20,6 +20,20 @@ import type {
 // Simple reactive store using callbacks
 type Listener = () => void
 
+const DEFAULT_GLASS: GlassSettings = {
+  shape: 'grid',
+  cells: 4,
+  distortion: 123,
+  angle: 30,
+  aberration: 1.79,
+  ior: 1.76,
+  fresnel: 0.56,
+  frost: 0.05,
+  bevel: 0.33,
+  corner: 0.033,
+  ringThickness: 0.32,
+}
+
 export interface EditorState {
   grid: MeshGrid
   selectedPoint: { row: number; col: number } | null
@@ -27,6 +41,7 @@ export interface EditorState {
   canvasSize: { width: number; height: number }
   artboardSize: { width: number; height: number }
   subdivision: number
+  showMeshOverlay: boolean
   animation: AnimationSettings
   canvasBackground: CanvasBackgroundSettings
   effect: EffectSettings
@@ -51,6 +66,48 @@ class EditorStore {
     return style === 'smooth' ? { min: 0.5, max: 2 } : { min: 0, max: 1 }
   }
 
+  private lerp(a: number, b: number, t: number) {
+    return a + (b - a) * t
+  }
+
+  private sampleColorFromGrid(grid: MeshGrid, u: number, v: number): Color {
+    const rowMax = Math.max(0, grid.rows - 1)
+    const colMax = Math.max(0, grid.cols - 1)
+    const gx = Math.max(0, Math.min(colMax, u * colMax))
+    const gy = Math.max(0, Math.min(rowMax, v * rowMax))
+    const c0 = Math.floor(gx)
+    const c1 = Math.min(colMax, c0 + 1)
+    const r0 = Math.floor(gy)
+    const r1 = Math.min(rowMax, r0 + 1)
+    const tx = gx - c0
+    const ty = gy - r0
+
+    const a = grid.points[r0][c0].color
+    const b = grid.points[r0][c1].color
+    const c = grid.points[r1][c0].color
+    const d = grid.points[r1][c1].color
+
+    const top: Color = {
+      r: this.lerp(a.r, b.r, tx),
+      g: this.lerp(a.g, b.g, tx),
+      b: this.lerp(a.b, b.b, tx),
+      a: this.lerp(a.a, b.a, tx),
+    }
+    const bottom: Color = {
+      r: this.lerp(c.r, d.r, tx),
+      g: this.lerp(c.g, d.g, tx),
+      b: this.lerp(c.b, d.b, tx),
+      a: this.lerp(c.a, d.a, tx),
+    }
+
+    return {
+      r: this.lerp(top.r, bottom.r, ty),
+      g: this.lerp(top.g, bottom.g, ty),
+      b: this.lerp(top.b, bottom.b, ty),
+      a: this.lerp(top.a, bottom.a, ty),
+    }
+  }
+
   constructor() {
     this.state = {
       grid: createDefaultGrid(3, 3, 800, 600),
@@ -59,6 +116,7 @@ class EditorStore {
       canvasSize: { width: 800, height: 600 },
       artboardSize: { width: 1600, height: 1000 },
       subdivision: 20,
+      showMeshOverlay: true,
       animation: {
         style: 'static',
         speed: 1,
@@ -104,19 +162,7 @@ class EditorStore {
         size: 1.34,
         speed: 0.40,
       },
-      glass: {
-        shape: 'grid',
-        cells: 17,
-        distortion: 0,
-        angle: 0,
-        aberration: 3.0,
-        ior: 2.03,
-        fresnel: 0.31,
-        frost: 0.05,
-        bevel: 0.28,
-        corner: 0.027,
-        ringThickness: 0.32,
-      },
+      glass: { ...DEFAULT_GLASS },
       hexagon: {
         color: { r: 1, g: 1, b: 1, a: 1 },
         opacity: 10,
@@ -285,6 +331,11 @@ class EditorStore {
     this.notify()
   }
 
+  setShowMeshOverlay(show: boolean) {
+    this.state.showMeshOverlay = show
+    this.notify()
+  }
+
   setAnimationStyle(style: AnimationStyle) {
     this.state.animation.style = style
     const speedBounds = this.animSpeedBounds(style)
@@ -346,6 +397,9 @@ class EditorStore {
       this.state.effect.opacity = 0.8
       this.state.effect.scale = p.scale
       this.state.effect.rotate = p.rotate
+      if (type === 'glass') {
+        this.state.glass = { ...DEFAULT_GLASS }
+      }
     }
     this.notify()
   }
@@ -537,6 +591,23 @@ class EditorStore {
       default:
         break
     }
+    this.notify()
+  }
+
+  setGridSize(rows: number, cols: number) {
+    const { width, height } = this.state.canvasSize
+    const source = this.state.grid
+    const next = createDefaultGrid(rows, cols, width, height)
+    const points = next.points.map((row, r) =>
+      row.map((p, c) => {
+        const u = cols > 1 ? c / (cols - 1) : 0
+        const v = rows > 1 ? r / (rows - 1) : 0
+        return { ...p, color: this.sampleColorFromGrid(source, u, v) }
+      })
+    )
+    this.state.grid = { ...next, points }
+    this.state.selectedPoint = null
+    this.snapshot()
     this.notify()
   }
 
